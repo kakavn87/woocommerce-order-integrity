@@ -2,6 +2,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
+require_once OI_PATH . 'includes/class-stripe-connector.php';
+
 final class Order_Integrity {
     private static ?self $instance = null;
 
@@ -89,6 +91,7 @@ final class Order_Integrity {
         add_action( 'woocommerce_order_status_changed', array( $this, 'order_status_changed' ), 10, 4 );
         add_action( 'woocommerce_new_order', array( $this, 'new_order' ) );
         add_action( 'oi_integrity_scan', array( $this, 'scheduled_scan' ) );
+        add_action( 'admin_post_oi_test_stripe', array( $this, 'test_stripe_connection' ) );
     }
 
     public function cron_schedules( array $schedules ): array {
@@ -237,8 +240,214 @@ CSS;
             'order-integrity-flow',
             array( $this, 'render_flow_settings' )
         );
+
+        add_submenu_page(
+            'order-integrity',
+            __( 'Integrationen', 'order-integrity' ),
+            __( 'Integrationen', 'order-integrity' ),
+            'manage_woocommerce',
+            'order-integrity-integrations',
+            array( $this, 'render_integrations' )
+        );
     }
 
+
+
+    public function render_integrations(): void {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
+        if ( isset( $_POST['oi_save_stripe'] ) ) {
+            check_admin_referer( 'oi_save_stripe_settings' );
+
+            $enabled = ! empty( $_POST['oi_stripe_enabled'] );
+            $secret  = isset( $_POST['oi_stripe_secret_key'] )
+                ? trim( sanitize_text_field( wp_unslash( $_POST['oi_stripe_secret_key'] ) ) )
+                : '';
+
+            OI_Stripe_Connector::save_settings( $enabled, $secret );
+
+            add_settings_error(
+                'oi_integrations',
+                'oi_stripe_saved',
+                __( 'Stripe-Einstellungen wurden gespeichert.', 'order-integrity' ),
+                'updated'
+            );
+        }
+
+        $test_result = get_transient( 'oi_stripe_test_result_' . get_current_user_id() );
+        if ( false !== $test_result ) {
+            delete_transient( 'oi_stripe_test_result_' . get_current_user_id() );
+        }
+
+        $stripe_enabled = OI_Stripe_Connector::is_enabled();
+        $stripe_key = OI_Stripe_Connector::get_secret_key();
+        $masked_key = $stripe_key
+            ? substr( $stripe_key, 0, 7 ) . '••••••••••••' . substr( $stripe_key, -4 )
+            : '';
+        ?>
+        <div class="wrap oi-admin">
+            <?php settings_errors( 'oi_integrations' ); ?>
+
+            <div class="oi-breadcrumb">
+                <strong><?php esc_html_e( 'Integrationen', 'order-integrity' ); ?></strong>
+            </div>
+
+            <div class="oi-header">
+                <div>
+                    <h1 class="oi-title"><?php esc_html_e( 'Integrationen', 'order-integrity' ); ?></h1>
+                    <p class="oi-subtitle"><?php esc_html_e( 'Verbinden Sie externe Systeme, damit Order Integrity die Angaben Ihrer Bestellung miteinander abgleichen kann.', 'order-integrity' ); ?></p>
+                </div>
+            </div>
+
+            <?php if ( is_array( $test_result ) ) : ?>
+                <div class="notice <?php echo ! empty( $test_result['success'] ) ? 'notice-success' : 'notice-error'; ?>" style="margin:0 0 18px;">
+                    <p><?php echo esc_html( $test_result['message'] ?? '' ); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <div class="oi-card" style="max-width:1000px;padding:22px;margin-bottom:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;">
+                    <div>
+                        <h2 style="margin:0 0 6px;">Stripe</h2>
+                        <p style="margin:0;color:#6b7280;"><?php esc_html_e( 'Vergleicht Stripe-Zahlungen mit den zugehörigen WooCommerce-Bestellungen.', 'order-integrity' ); ?></p>
+                    </div>
+                    <span class="oi-badge <?php echo $stripe_enabled ? 'oi-badge-success' : 'oi-badge-muted'; ?>">
+                        <?php echo $stripe_enabled ? esc_html__( 'Verbunden', 'order-integrity' ) : esc_html__( 'Nicht verbunden', 'order-integrity' ); ?>
+                    </span>
+                </div>
+
+                <form method="post" style="margin-top:22px;">
+                    <?php wp_nonce_field( 'oi_save_stripe_settings' ); ?>
+
+                    <label style="display:flex;align-items:center;gap:9px;font-weight:600;margin-bottom:18px;">
+                        <input type="checkbox" name="oi_stripe_enabled" value="1" <?php checked( $stripe_enabled ); ?>>
+                        <?php esc_html_e( 'Stripe-Prüfung aktivieren', 'order-integrity' ); ?>
+                    </label>
+
+                    <label style="display:block;max-width:620px;">
+                        <strong><?php esc_html_e( 'Geheimer Stripe-Schlüssel', 'order-integrity' ); ?></strong>
+                        <span style="display:block;color:#6b7280;font-size:12px;margin:4px 0 7px;">
+                            <?php esc_html_e( 'Der Schlüssel wird nur in Ihrem WordPress-System gespeichert und für direkte Anfragen an Stripe verwendet.', 'order-integrity' ); ?>
+                        </span>
+                        <input type="password" name="oi_stripe_secret_key" value="" placeholder="<?php echo esc_attr( $masked_key ?: 'sk_live_…' ); ?>" autocomplete="new-password" style="width:100%;">
+                    </label>
+
+                    <p style="color:#6b7280;font-size:12px;">
+                        <?php esc_html_e( 'Lassen Sie das Feld leer, wenn der bereits gespeicherte Schlüssel unverändert bleiben soll.', 'order-integrity' ); ?>
+                    </p>
+
+                    <button type="submit" name="oi_save_stripe" value="1" class="button button-primary oi-button">
+                        ✓ <?php esc_html_e( 'Stripe speichern', 'order-integrity' ); ?>
+                    </button>
+
+                    <?php if ( $stripe_key ) : ?>
+                        <a class="button oi-button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=oi_test_stripe' ), 'oi_test_stripe' ) ); ?>">
+                            <?php esc_html_e( 'Verbindung testen', 'order-integrity' ); ?>
+                        </a>
+                    <?php endif; ?>
+                </form>
+            </div>
+
+            <div class="oi-card" style="max-width:1000px;padding:22px;">
+                <h2 style="margin-top:0;"><?php esc_html_e( 'Weitere Integrationen', 'order-integrity' ); ?></h2>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+                    <?php foreach ( array( 'Xero', 'JTL', 'DHL / DPD' ) as $name ) : ?>
+                        <div style="border:1px solid #e7eaf0;border-radius:12px;padding:16px;background:#fbfcfe;">
+                            <strong><?php echo esc_html( $name ); ?></strong>
+                            <div style="margin-top:6px;color:#6b7280;font-size:12px;"><?php esc_html_e( 'Geplant', 'order-integrity' ); ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    public function test_stripe_connection(): void {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_die( esc_html__( 'Keine Berechtigung.', 'order-integrity' ) );
+        }
+
+        check_admin_referer( 'oi_test_stripe' );
+
+        $result = OI_Stripe_Connector::test_connection();
+        set_transient( 'oi_stripe_test_result_' . get_current_user_id(), $result, 60 );
+
+        wp_safe_redirect( admin_url( 'admin.php?page=order-integrity-integrations' ) );
+        exit;
+    }
+
+    private function reconcile_stripe_orders(): void {
+        if ( ! OI_Stripe_Connector::is_enabled() ) {
+            return;
+        }
+
+        $orders = wc_get_orders(
+            array(
+                'limit'        => 50,
+                'orderby'      => 'date',
+                'order'        => 'DESC',
+                'status'       => array( 'processing', 'completed', 'on-hold', 'pending' ),
+                'date_created' => '>' . gmdate( 'Y-m-d H:i:s', time() - 2 * DAY_IN_SECONDS ),
+                'return'       => 'objects',
+            )
+        );
+
+        foreach ( $orders as $order ) {
+            if ( ! $order instanceof WC_Order || '' === $order->get_transaction_id() ) {
+                continue;
+            }
+
+            $result = OI_Stripe_Connector::reconcile_order( $order );
+
+            if ( 'ok' !== $result['status'] ) {
+                continue;
+            }
+
+            if ( ! empty( $result['amount_mismatch'] ) ) {
+                $this->create_or_update_incident(
+                    $order,
+                    'stripe_amount_mismatch',
+                    'critical',
+                    __( 'Der in Stripe bestätigte Betrag stimmt nicht mit dem Betrag der WooCommerce-Bestellung überein.', 'order-integrity' ),
+                    sprintf(
+                        __( 'WooCommerce: %1$s. Stripe: %2$s.', 'order-integrity' ),
+                        wc_price( $result['woo_amount'], array( 'currency' => $result['woo_currency'] ) ),
+                        wc_price( $result['stripe_amount'], array( 'currency' => $result['stripe_currency'] ) )
+                    )
+                );
+            }
+
+            if ( ! empty( $result['currency_mismatch'] ) ) {
+                $this->create_or_update_incident(
+                    $order,
+                    'stripe_currency_mismatch',
+                    'critical',
+                    __( 'Die Währung der Stripe-Zahlung stimmt nicht mit der WooCommerce-Bestellung überein.', 'order-integrity' ),
+                    sprintf(
+                        __( 'WooCommerce: %1$s. Stripe: %2$s.', 'order-integrity' ),
+                        strtoupper( $result['woo_currency'] ),
+                        strtoupper( $result['stripe_currency'] )
+                    )
+                );
+            }
+
+            if ( ! empty( $result['payment_mismatch'] ) ) {
+                $this->create_or_update_incident(
+                    $order,
+                    'stripe_payment_status_mismatch',
+                    'critical',
+                    __( 'WooCommerce meldet die Bestellung als bezahlt, Stripe meldet jedoch einen anderen Zahlungsstatus.', 'order-integrity' ),
+                    sprintf(
+                        __( 'Stripe-Zahlungsstatus: %s.', 'order-integrity' ),
+                        $result['stripe_status']
+                    )
+                );
+            }
+        }
+    }
 
     private static function default_flow_definition(): array {
         return array(
@@ -909,6 +1118,8 @@ CSS;
                 $this->evaluate_order( $order );
             }
         }
+
+        $this->reconcile_stripe_orders();
     }
 
 
@@ -1025,6 +1236,9 @@ CSS;
         $labels = array(
             'payment_order_mismatch' => __( 'Zahlung → Bestellung', 'order-integrity' ),
             'fulfillment_timeout'    => __( 'Bestellung → Auftragsabwicklung', 'order-integrity' ),
+            'stripe_amount_mismatch' => __( 'Stripe → Betrag', 'order-integrity' ),
+            'stripe_currency_mismatch' => __( 'Stripe → Währung', 'order-integrity' ),
+            'stripe_payment_status_mismatch' => __( 'Stripe → Zahlungsstatus', 'order-integrity' ),
         );
 
         return $labels[ $type ] ?? $type;
