@@ -17,7 +17,10 @@ services:
       - key: WORDPRESS_DB_USER
         value: wordpress
       - key: WORDPRESS_DB_PASSWORD
-        generateValue: true
+        fromService:
+          type: pserv
+          name: oi-test-mysql
+          envVarKey: MYSQL_PASSWORD
       - key: WORDPRESS_CONFIG_EXTRA
         value: "require_once ABSPATH . 'wp-config-extra.php';"
     healthCheckPath: /
@@ -34,9 +37,6 @@ services:
       - key: MYSQL_USER
         value: wordpress
       - key: MYSQL_PASSWORD
-        fromService:
-          type: web
-          name: oi-test-shop
-          envVarKey: WORDPRESS_DB_PASSWORD
+        generateValue: true
       - key: MYSQL_ROOT_PASSWORD
         generateValue: true
