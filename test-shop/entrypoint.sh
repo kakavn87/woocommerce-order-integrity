@@ -34,7 +34,11 @@ export WORDPRESS_CONFIG_EXTRA="if (!defined('WP_DEBUG')) { define('WP_DEBUG', tr
 
 /usr/local/bin/docker-entrypoint.sh true
 
+echo "==> Checking WordPress database..."
+wp db check --allow-root --path=/var/www/html
+
 if ! wp core is-installed --allow-root --path=/var/www/html >/dev/null 2>&1; then
+  echo "==> WordPress is not installed. Installing automatically..."
   wp core install \
     --allow-root \
     --path=/var/www/html \
@@ -44,9 +48,19 @@ if ! wp core is-installed --allow-root --path=/var/www/html >/dev/null 2>&1; the
     --admin_password="admin12346789" \
     --admin_email="test@example.com" \
     --skip-email
+else
+  echo "==> WordPress is already installed."
 fi
 
-wp plugin activate woocommerce --allow-root --path=/var/www/html >/dev/null 2>&1 || true
-wp plugin activate order-integrity --allow-root --path=/var/www/html >/dev/null 2>&1 || true
+echo "==> Verifying WordPress installation..."
+wp core is-installed --allow-root --path=/var/www/html
+
+echo "==> Activating WooCommerce..."
+wp plugin activate woocommerce --allow-root --path=/var/www/html
+
+echo "==> Activating Order Integrity..."
+wp plugin activate order-integrity --allow-root --path=/var/www/html
+
+echo "==> WordPress test shop ready."
 
 exec apache2-foreground
