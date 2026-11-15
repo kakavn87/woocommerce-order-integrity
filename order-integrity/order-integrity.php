@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Order Integrity for WooCommerce
  * Description: Prüft die Integrität von WooCommerce-Bestellungen zwischen Zahlung, Bestellung und Fulfillment.
- * Version: 0.5.0
+ * Version: 0.6.0
  * Author: Order Integrity
  * Requires at least: 6.6
  * Requires PHP: 8.1
@@ -15,7 +15,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'OI_VERSION', '0.5.0' );
+define( 'OI_VERSION', '0.6.0' );
 define( 'OI_FILE', __FILE__ );
 define( 'OI_PATH', plugin_dir_path( __FILE__ ) );
 
