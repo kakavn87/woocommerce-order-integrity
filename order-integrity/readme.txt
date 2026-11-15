@@ -4,7 +4,7 @@ Tags: woocommerce, orders, monitoring, reconciliation, diagnostics
 Requires at least: 6.6
 Requires PHP: 8.1
 Requires Plugins: woocommerce
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv3
 
 Überwacht die Integrität von WooCommerce-Bestellungen zwischen Zahlung, Bestellung und Fulfillment.
