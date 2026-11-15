@@ -1,7 +1,11 @@
 <?php
-// Render test-shop bootstrap configuration.
-if (getenv('WORDPRESS_DB_HOST')) {
+// Render test-shop debug configuration.
+if (!defined('WP_DEBUG')) {
     define('WP_DEBUG', true);
+}
+if (!defined('WP_DEBUG_LOG')) {
     define('WP_DEBUG_LOG', true);
+}
+if (!defined('WP_DEBUG_DISPLAY')) {
     define('WP_DEBUG_DISPLAY', false);
 }
