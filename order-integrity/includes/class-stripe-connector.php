@@ -57,6 +57,10 @@ final class OI_Stripe_Connector {
             return new WP_Error( 'oi_stripe_no_transaction', __( 'Keine Stripe-Transaktions-ID vorhanden.', 'order-integrity' ) );
         }
 
+        if ( 0 === strpos( $transaction_id, 'ch_' ) ) {
+            return self::request( '/v1/charges/' . rawurlencode( $transaction_id ) );
+        }
+
         return self::request( '/v1/payment_intents/' . rawurlencode( $transaction_id ) );
     }
 
@@ -108,6 +112,10 @@ final class OI_Stripe_Connector {
         $woo_currency = strtolower( (string) $order->get_currency() );
         $stripe_currency = strtolower( (string) ( $body['currency'] ?? '' ) );
         $stripe_status = sanitize_key( (string) ( $body['status'] ?? '' ) );
+
+        if ( isset( $body['payment_intent'] ) && is_string( $body['payment_intent'] ) ) {
+            $body['id'] = $body['payment_intent'];
+        }
 
         return array(
             'status'           => 'ok',
