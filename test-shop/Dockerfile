@@ -24,9 +24,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-
 RUN rm -rf /var/www/html/* \
     && cp -a /usr/src/wordpress/. /var/www/html/
 
-RUN curl -fsSL https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/wp-config-extra.php \
-    -o /var/www/html/wp-config-extra.php \
-    && curl -fsSL https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/entrypoint.sh \
+RUN curl -fsSL https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/entrypoint.sh \
     -o /usr/local/bin/oi-test-shop-entrypoint \
     && chmod +x /usr/local/bin/oi-test-shop-entrypoint
 
