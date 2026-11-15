@@ -92,6 +92,7 @@ final class Order_Integrity {
         add_action( 'woocommerce_new_order', array( $this, 'new_order' ) );
         add_action( 'oi_integrity_scan', array( $this, 'scheduled_scan' ) );
         add_action( 'admin_post_oi_test_stripe', array( $this, 'test_stripe_connection' ) );
+        add_action( 'admin_post_oi_run_scan', array( $this, 'run_manual_scan' ) );
     }
 
     public function cron_schedules( array $schedules ): array {
@@ -363,6 +364,18 @@ CSS;
             </div>
         </div>
         <?php
+    }
+
+    public function run_manual_scan(): void {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_die( esc_html__( 'Keine Berechtigung.', 'order-integrity' ) );
+        }
+
+        check_admin_referer( 'oi_run_scan' );
+        self::instance()->scheduled_scan();
+        set_transient( 'oi_manual_scan_result_' . get_current_user_id(), time(), 60 );
+        wp_safe_redirect( admin_url( 'admin.php?page=order-integrity' ) );
+        exit;
     }
 
     public function test_stripe_connection(): void {
@@ -980,6 +993,10 @@ CSS;
 
         global $wpdb;
         $incidents = $wpdb->prefix . 'oi_incidents';
+        $scan_result = get_transient( 'oi_manual_scan_result_' . get_current_user_id() );
+        if ( false !== $scan_result ) {
+            delete_transient( 'oi_manual_scan_result_' . get_current_user_id() );
+        }
 
         $open = (int) $wpdb->get_var(
             "SELECT COUNT(*) FROM {$incidents} WHERE status = 'open'"
@@ -1000,8 +1017,16 @@ CSS;
         );
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e( 'Order Integrity', 'order-integrity' ); ?></h1>
-            <p><?php esc_html_e( 'Prüft den Bestellablauf von Zahlung über Bestellung bis Auftragsabwicklung.', 'order-integrity' ); ?></p>
+            <?php if ( false !== $scan_result ) : ?>
+                <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Prüfung wurde jetzt gestartet und abgeschlossen.', 'order-integrity' ); ?></p></div>
+            <?php endif; ?>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:20px;max-width:1100px;">
+                <div>
+                    <h1><?php esc_html_e( 'Order Integrity', 'order-integrity' ); ?></h1>
+                    <p><?php esc_html_e( 'Prüft den Bestellablauf von Zahlung über Bestellung bis Auftragsabwicklung.', 'order-integrity' ); ?></p>
+                </div>
+                <a class="button button-primary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=oi_run_scan' ), 'oi_run_scan' ) ); ?>">↻ <?php esc_html_e( 'Prüfung jetzt starten', 'order-integrity' ); ?></a>
+            </div>
 
             <div style="display:flex;gap:16px;max-width:1100px;margin:20px 0;">
                 <?php $this->metric_card( __( 'Offene Vorfälle', 'order-integrity' ), $open ); ?>
