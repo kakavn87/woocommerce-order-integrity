@@ -1007,6 +1007,12 @@ CSS;
         $warnings = (int) $wpdb->get_var(
             "SELECT COUNT(*) FROM {$incidents} WHERE status = 'open' AND severity = 'warning'"
         );
+        $stock_issues = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$incidents} WHERE status = 'open' AND type = 'stock_not_reduced'"
+        );
+        $checked_orders = (int) wc_orders_count( 'any', array(
+            'date_created' => '>' . gmdate( 'Y-m-d H:i:s', time() - 7 * DAY_IN_SECONDS ),
+        ) );
 
         $recent = $wpdb->get_results(
             "SELECT order_id, type, severity, root_cause, first_seen
@@ -1029,9 +1035,11 @@ CSS;
             </div>
 
             <div style="display:flex;gap:16px;max-width:1100px;margin:20px 0;">
+                <?php $this->metric_card( __( 'Geprüfte Bestellungen (7 Tage)', 'order-integrity' ), $checked_orders ); ?>
                 <?php $this->metric_card( __( 'Offene Vorfälle', 'order-integrity' ), $open ); ?>
                 <?php $this->metric_card( __( 'Kritisch', 'order-integrity' ), $critical ); ?>
                 <?php $this->metric_card( __( 'Warnungen', 'order-integrity' ), $warnings ); ?>
+                <?php $this->metric_card( __( 'Lagerbestand', 'order-integrity' ), $stock_issues ); ?>
             </div>
 
             <h2><?php esc_html_e( 'Bestellablauf', 'order-integrity' ); ?></h2>
@@ -1074,7 +1082,9 @@ CSS;
             <h2><?php esc_html_e( 'Aktive Prüfungen', 'order-integrity' ); ?></h2>
             <ul>
                 <li><?php esc_html_e( 'Zahlung erfolgreich, Bestellung bleibt länger als das konfigurierte Zeitlimit ausstehend → kritisch.', 'order-integrity' ); ?></li>
+                <li><?php esc_html_e( 'Bezahlte Bestellung mit Lagerverwaltung: Bestand wurde nach dem konfigurierten Zeitlimit noch nicht reduziert → kritisch.', 'order-integrity' ); ?></li>
                 <li><?php esc_html_e( 'Bestellung bleibt länger als das konfigurierte Zeitlimit in Bearbeitung → Warnung zur Auftragsabwicklung.', 'order-integrity' ); ?></li>
+                <li><?php esc_html_e( 'Behobene Abweichungen werden bei der nächsten Prüfung automatisch als erledigt markiert.', 'order-integrity' ); ?></li>
                 <li><?php esc_html_e( 'Integritätsprüfung läuft automatisch alle 15 Minuten.', 'order-integrity' ); ?></li>
             </ul>
         </div>
@@ -1149,10 +1159,13 @@ CSS;
 
 
     private function evaluate_order( WC_Order $order ): void {
-        $payment = $this->flow_step( 'payment' );
-        $order_step = $this->flow_step( 'order' );
+        $payment     = $this->flow_step( 'payment' );
+        $order_step  = $this->flow_step( 'order' );
+        $stock       = $this->flow_step( 'stock' );
         $fulfillment = $this->flow_step( 'fulfillment' );
 
+        // Payment → Order: a paid order must not remain pending/on-hold indefinitely.
+        $payment_order_problem = false;
         if (
             $payment &&
             $payment['enabled'] &&
@@ -1165,6 +1178,7 @@ CSS;
             $age = time() - $order->get_date_paid()->getTimestamp();
 
             if ( $age >= $timeout * MINUTE_IN_SECONDS ) {
+                $payment_order_problem = true;
                 $this->create_or_update_incident(
                     $order,
                     'payment_order_mismatch',
@@ -1174,7 +1188,42 @@ CSS;
                 );
             }
         }
+        if ( ! $payment_order_problem ) {
+            $this->resolve_open_incident( $order, 'payment_order_mismatch' );
+        }
 
+        // Order → Stock: WooCommerce should have reduced stock for paid orders
+        // that contain at least one stock-managed product.
+        $stock_problem = false;
+        if (
+            $stock &&
+            $stock['enabled'] &&
+            $order_step &&
+            $order_step['enabled'] &&
+            $order->is_paid() &&
+            $this->order_requires_stock_check( $order )
+        ) {
+            $timeout = max( 1, (int) $stock['timeout'] );
+            $created = $order->get_date_created();
+            $age = $created ? time() - $created->getTimestamp() : 0;
+
+            if ( ! $this->is_order_stock_reduced( $order ) && $age >= $timeout * MINUTE_IN_SECONDS ) {
+                $stock_problem = true;
+                $this->create_or_update_incident(
+                    $order,
+                    'stock_not_reduced',
+                    'critical',
+                    __( 'Die Bestellung ist bezahlt, aber der Lagerbestand wurde noch nicht reduziert.', 'order-integrity' ),
+                    __( 'Der angezeigte Bestand kann zu hoch sein und weitere Verkäufe können dadurch möglich sein.', 'order-integrity' )
+                );
+            }
+        }
+        if ( ! $stock_problem ) {
+            $this->resolve_open_incident( $order, 'stock_not_reduced' );
+        }
+
+        // Order → Fulfillment: processing orders should not remain in fulfillment forever.
+        $fulfillment_problem = false;
         if (
             $order_step &&
             $order_step['enabled'] &&
@@ -1184,6 +1233,7 @@ CSS;
             $order->has_status( 'processing' ) &&
             ( time() - $order->get_date_created()->getTimestamp() ) >= $fulfillment['timeout'] * MINUTE_IN_SECONDS
         ) {
+            $fulfillment_problem = true;
             $this->create_or_update_incident(
                 $order,
                 'fulfillment_timeout',
@@ -1192,6 +1242,57 @@ CSS;
                 __( 'Der weitere Versandprozess sollte manuell geprüft werden.', 'order-integrity' )
             );
         }
+        if ( ! $fulfillment_problem ) {
+            $this->resolve_open_incident( $order, 'fulfillment_timeout' );
+        }
+    }
+
+    private function order_requires_stock_check( WC_Order $order ): bool {
+        foreach ( $order->get_items( 'line_item' ) as $item ) {
+            $product = $item->get_product();
+            if ( $product && $product->managing_stock() && $product->exists() ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function is_order_stock_reduced( WC_Order $order ): bool {
+        $reduced = $order->get_meta( '_order_stock_reduced', true );
+        if ( wc_string_to_bool( (string) $reduced ) ) {
+            return true;
+        }
+
+        // Fallback for older/custom WooCommerce flows: check the line-item
+        // reduction metadata used by WooCommerce when stock is reduced.
+        foreach ( $order->get_items( 'line_item' ) as $item ) {
+            $reduced_item = $item->get_meta( '_reduced_stock', true );
+            if ( '' !== $reduced_item && false !== $reduced_item ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function resolve_open_incident( WC_Order $order, string $type ): void {
+        global $wpdb;
+
+        $wpdb->update(
+            $wpdb->prefix . 'oi_incidents',
+            array(
+                'status'    => 'resolved',
+                'last_seen' => current_time( 'mysql', true ),
+            ),
+            array(
+                'order_id' => $order->get_id(),
+                'type'     => $type,
+                'status'   => 'open',
+            ),
+            array( '%s', '%s' ),
+            array( '%d', '%s', '%s' )
+        );
     }
 
     private function record_event( WC_Order $order, string $event ): void {
@@ -1260,6 +1361,7 @@ CSS;
     private function human_incident_type( string $type ): string {
         $labels = array(
             'payment_order_mismatch' => __( 'Zahlung → Bestellung', 'order-integrity' ),
+            'stock_not_reduced'      => __( 'Bestellung → Lagerbestand', 'order-integrity' ),
             'fulfillment_timeout'    => __( 'Bestellung → Auftragsabwicklung', 'order-integrity' ),
             'stripe_amount_mismatch' => __( 'Stripe → Betrag', 'order-integrity' ),
             'stripe_currency_mismatch' => __( 'Stripe → Währung', 'order-integrity' ),
