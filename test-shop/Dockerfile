@@ -18,8 +18,9 @@ RUN curl -fsSL https://github.com/kakavn87/woocommerce-order-integrity/archive/r
     && cp -R /tmp/order-integrity/woocommerce-order-integrity-main/order-integrity /usr/src/wordpress/wp-content/plugins/ \
     && rm -rf /tmp/order-integrity /tmp/order-integrity.zip
 
-# Populate Apache's document root explicitly. The custom entrypoint starts Apache
-# directly, so we cannot rely on the base image entrypoint to copy WordPress here.
+RUN curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp \
+    && chmod +x /usr/local/bin/wp
+
 RUN rm -rf /var/www/html/* \
     && cp -a /usr/src/wordpress/. /var/www/html/
 
