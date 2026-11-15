@@ -135,6 +135,19 @@ final class Order_Integrity {
         }
 
         $incident_id = isset( $_GET['incident_id'] ) ? absint( $_GET['incident_id'] ) : 0;
+
+        if ( $incident_id > 0 && isset( $_GET['resolve'] ) && '1' === $_GET['resolve'] ) {
+            check_admin_referer( 'oi_resolve_incident_' . $incident_id );
+            global $wpdb;
+            $wpdb->update(
+                $wpdb->prefix . 'oi_incidents',
+                array( 'status' => 'resolved', 'last_seen' => current_time( 'mysql', true ) ),
+                array( 'id' => $incident_id ),
+                array( '%s', '%s' ),
+                array( '%d' )
+            );
+        }
+
         if ( $incident_id > 0 ) {
             $this->render_incident_detail( $incident_id );
             return;
@@ -197,6 +210,15 @@ final class Order_Integrity {
         <div class="wrap">
             <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=order-integrity-incidents' ) ); ?>">← <?php esc_html_e( 'Alle Vorfälle', 'order-integrity' ); ?></a></p>
             <h1><?php printf( esc_html__( 'Vorfall #%d', 'order-integrity' ), (int) $incident->id ); ?></h1>
+            <?php if ( 'open' === $incident->status ) : ?>
+                <p>
+                    <a class="button button-primary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=order-integrity-incidents&incident_id=' . (int) $incident->id . '&resolve=1' ), 'oi_resolve_incident_' . (int) $incident->id ) ); ?>">
+                        <?php esc_html_e( 'Als behoben markieren', 'order-integrity' ); ?>
+                    </a>
+                </p>
+            <?php else : ?>
+                <p><span class="notice-inline notice-success"><?php esc_html_e( 'Dieser Vorfall ist behoben.', 'order-integrity' ); ?></span></p>
+            <?php endif; ?>
 
             <div style="display:flex;gap:20px;flex-wrap:wrap;max-width:1100px;">
                 <div class="card" style="padding:20px;min-width:280px;flex:1;">
