@@ -68,6 +68,7 @@ final class Order_Integrity {
 
     private function __construct() {
         add_filter( 'cron_schedules', array( $this, 'cron_schedules' ) );
+        add_action( 'init', array( $this, 'maybe_upgrade' ), 5 );
         add_action( 'init', array( $this, 'load_textdomain' ) );
         add_action( 'admin_menu', array( $this, 'admin_menu' ) );
         add_action( 'woocommerce_payment_complete', array( $this, 'payment_completed' ) );
@@ -82,6 +83,12 @@ final class Order_Integrity {
             'display'  => __( 'Alle 15 Minuten', 'order-integrity' ),
         );
         return $schedules;
+    }
+
+    public function maybe_upgrade(): void {
+        if ( OI_VERSION !== get_option( 'oi_version' ) ) {
+            self::activate();
+        }
     }
 
     public function load_textdomain(): void {
