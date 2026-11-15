@@ -41,7 +41,7 @@ if ! wp core is-installed --allow-root --path=/var/www/html >/dev/null 2>&1; the
     --url="https://oi-test-shop-v5fg.onrender.com" \
     --title="Order Integrity Test Shop" \
     --admin_user="admin" \
-    --admin_password="TestShop-2026-OrderIntegrity!" \
+    --admin_password="admin12346789" \
     --admin_email="test@example.com" \
     --skip-email
 fi
