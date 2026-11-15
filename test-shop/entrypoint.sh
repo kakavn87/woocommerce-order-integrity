@@ -48,8 +48,9 @@ if ! grep -q "HTTP_X_FORWARDED_PROTO" wp-config.php; then
 
 // Render reverse-proxy HTTPS handling.
 // Render terminates TLS before forwarding the request to Apache.
+// Accept comma-separated forwarded protocol values as well.
 if (
-    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos(strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']), 'https') !== false)
     || (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
 ) {
     $_SERVER['HTTPS'] = 'on';
