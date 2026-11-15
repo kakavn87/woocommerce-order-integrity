@@ -18,8 +18,10 @@ RUN curl -fsSL https://github.com/kakavn87/woocommerce-order-integrity/archive/r
     && cp -R /tmp/order-integrity/woocommerce-order-integrity-main/order-integrity /usr/src/wordpress/wp-content/plugins/ \
     && rm -rf /tmp/order-integrity /tmp/order-integrity.zip
 
-COPY wp-config-extra.php /usr/src/wordpress/wp-config-extra.php
-COPY entrypoint.sh /usr/local/bin/oi-test-shop-entrypoint
-RUN chmod +x /usr/local/bin/oi-test-shop-entrypoint
+RUN curl -fsSL https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/wp-config-extra.php \
+    -o /usr/src/wordpress/wp-config-extra.php \
+    && curl -fsSL https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/entrypoint.sh \
+    -o /usr/local/bin/oi-test-shop-entrypoint \
+    && chmod +x /usr/local/bin/oi-test-shop-entrypoint
 
 CMD ["oi-test-shop-entrypoint"]
