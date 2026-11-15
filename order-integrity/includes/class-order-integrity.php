@@ -56,6 +56,10 @@ final class Order_Integrity {
             add_option( 'oi_fulfillment_timeout', 1440 );
         }
 
+        if ( false === get_option( 'oi_flow_definition', false ) ) {
+            add_option( 'oi_flow_definition', self::default_flow_definition() );
+        }
+
         if ( ! wp_next_scheduled( 'oi_integrity_scan' ) ) {
             wp_schedule_event( time() + 300, 'oi_fifteen_minutes', 'oi_integrity_scan' );
         }
@@ -224,6 +228,239 @@ CSS;
             'order-integrity-incidents',
             array( $this, 'render_incidents' )
         );
+
+        add_submenu_page(
+            'order-integrity',
+            __( 'Prozess-Flow', 'order-integrity' ),
+            __( 'Prozess-Flow', 'order-integrity' ),
+            'manage_woocommerce',
+            'order-integrity-flow',
+            array( $this, 'render_flow_settings' )
+        );
+    }
+
+
+    private static function default_flow_definition(): array {
+        return array(
+            array(
+                'key'      => 'payment',
+                'label'    => 'Zahlung',
+                'enabled'  => true,
+                'timeout'  => 10,
+            ),
+            array(
+                'key'      => 'order',
+                'label'    => 'Bestellung',
+                'enabled'  => true,
+                'timeout'  => 10,
+            ),
+            array(
+                'key'      => 'stock',
+                'label'    => 'Lagerbestand',
+                'enabled'  => true,
+                'timeout'  => 30,
+            ),
+            array(
+                'key'      => 'fulfillment',
+                'label'    => 'Auftragsabwicklung',
+                'enabled'  => true,
+                'timeout'  => 1440,
+            ),
+        );
+    }
+
+    private function get_flow_definition(): array {
+        $flow = get_option( 'oi_flow_definition', self::default_flow_definition() );
+
+        if ( ! is_array( $flow ) || empty( $flow ) ) {
+            return self::default_flow_definition();
+        }
+
+        $allowed = array( 'payment', 'order', 'stock', 'fulfillment' );
+        $result  = array();
+
+        foreach ( $flow as $step ) {
+            if ( ! is_array( $step ) || empty( $step['key'] ) || ! in_array( $step['key'], $allowed, true ) ) {
+                continue;
+            }
+
+            $result[] = array(
+                'key'     => sanitize_key( $step['key'] ),
+                'label'   => sanitize_text_field( $step['label'] ?? $step['key'] ),
+                'enabled' => ! empty( $step['enabled'] ),
+                'timeout' => max( 1, min( 10080, absint( $step['timeout'] ?? 10 ) ) ),
+            );
+        }
+
+        return ! empty( $result ) ? $result : self::default_flow_definition();
+    }
+
+    private function flow_step( string $key ): ?array {
+        foreach ( $this->get_flow_definition() as $step ) {
+            if ( $key === $step['key'] ) {
+                return $step;
+            }
+        }
+
+        return null;
+    }
+
+    private function flow_enabled( string $key ): bool {
+        $step = $this->flow_step( $key );
+        return $step ? (bool) $step['enabled'] : false;
+    }
+
+    public function render_flow_settings(): void {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
+        if ( isset( $_POST['oi_save_flow'] ) ) {
+            check_admin_referer( 'oi_save_flow_settings' );
+
+            $submitted = isset( $_POST['oi_flow'] ) && is_array( $_POST['oi_flow'] )
+                ? wp_unslash( $_POST['oi_flow'] )
+                : array();
+
+            $allowed = array( 'payment', 'order', 'stock', 'fulfillment' );
+            $flow    = array();
+
+            foreach ( $allowed as $key ) {
+                if ( empty( $submitted[ $key ] ) || ! is_array( $submitted[ $key ] ) ) {
+                    continue;
+                }
+
+                $flow[] = array(
+                    'key'     => $key,
+                    'label'   => sanitize_text_field( $submitted[ $key ]['label'] ?? $key ),
+                    'enabled' => ! empty( $submitted[ $key ]['enabled'] ),
+                    'timeout' => max( 1, min( 10080, absint( $submitted[ $key ]['timeout'] ?? 10 ) ) ),
+                );
+            }
+
+            if ( count( $flow ) < 2 ) {
+                $flow = self::default_flow_definition();
+                add_settings_error(
+                    'oi_flow',
+                    'oi_flow_min_steps',
+                    __( 'Mindestens zwei Prozessschritte müssen aktiviert sein.', 'order-integrity' ),
+                    'error'
+                );
+            } else {
+                update_option( 'oi_flow_definition', $flow );
+                add_settings_error(
+                    'oi_flow',
+                    'oi_flow_saved',
+                    __( 'Der Prozess-Flow wurde gespeichert.', 'order-integrity' ),
+                    'updated'
+                );
+            }
+        }
+
+        $flow = $this->get_flow_definition();
+        $labels = array(
+            'payment'     => __( 'Zahlung', 'order-integrity' ),
+            'order'       => __( 'Bestellung', 'order-integrity' ),
+            'stock'       => __( 'Lagerbestand', 'order-integrity' ),
+            'fulfillment' => __( 'Auftragsabwicklung', 'order-integrity' ),
+        );
+        ?>
+        <div class="wrap oi-admin">
+            <?php settings_errors( 'oi_flow' ); ?>
+
+            <div class="oi-breadcrumb">
+                <strong><?php esc_html_e( 'Prozess-Flow', 'order-integrity' ); ?></strong>
+            </div>
+
+            <div class="oi-header">
+                <div>
+                    <h1 class="oi-title"><?php esc_html_e( 'Prozess-Flow konfigurieren', 'order-integrity' ); ?></h1>
+                    <p class="oi-subtitle"><?php esc_html_e( 'Definieren Sie, welche Schritte Order Integrity überwacht und ab wann eine Abweichung als auffällig gilt.', 'order-integrity' ); ?></p>
+                </div>
+            </div>
+
+            <form method="post">
+                <?php wp_nonce_field( 'oi_save_flow_settings' ); ?>
+
+                <div class="oi-card" style="padding:22px;max-width:1000px;">
+                    <div style="display:grid;gap:12px;">
+                        <?php foreach ( $flow as $index => $step ) : ?>
+                            <div style="display:grid;grid-template-columns:44px 1fr 150px 120px;gap:14px;align-items:center;border:1px solid #e7eaf0;border-radius:12px;padding:16px;background:#fbfcfe;">
+                                <div style="font-weight:800;color:#9aa1af;text-align:center;"><?php echo esc_html( $index + 1 ); ?></div>
+
+                                <div>
+                                    <strong style="font-size:15px;"><?php echo esc_html( $labels[ $step['key'] ] ?? $step['label'] ); ?></strong>
+                                    <div style="color:#6b7280;font-size:12px;margin-top:3px;">
+                                        <?php
+                                        if ( 'payment' === $step['key'] ) {
+                                            esc_html_e( 'Zahlungseingang und Zahlungsbestätigung', 'order-integrity' );
+                                        } elseif ( 'order' === $step['key'] ) {
+                                            esc_html_e( 'Bestellung und Bestellstatus in WooCommerce', 'order-integrity' );
+                                        } elseif ( 'stock' === $step['key'] ) {
+                                            esc_html_e( 'Lagerbestand und Bestandsverarbeitung', 'order-integrity' );
+                                        } else {
+                                            esc_html_e( 'Verarbeitung und Versand der Bestellung', 'order-integrity' );
+                                        }
+                                        ?>
+                                    </div>
+                                    <input type="hidden" name="oi_flow[<?php echo esc_attr( $step['key'] ); ?>][label]" value="<?php echo esc_attr( $step['label'] ); ?>">
+                                </div>
+
+                                <label style="font-size:12px;color:#6b7280;">
+                                    <?php esc_html_e( 'Zeitlimit (Min.)', 'order-integrity' ); ?>
+                                    <input type="number" min="1" max="10080" name="oi_flow[<?php echo esc_attr( $step['key'] ); ?>][timeout]" value="<?php echo esc_attr( $step['timeout'] ); ?>" style="width:100%;margin-top:5px;">
+                                </label>
+
+                                <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
+                                    <input type="checkbox" name="oi_flow[<?php echo esc_attr( $step['key'] ); ?>][enabled]" value="1" <?php checked( $step['enabled'] ); ?>>
+                                    <?php esc_html_e( 'Überwachen', 'order-integrity' ); ?>
+                                </label>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div style="margin-top:18px;padding:14px;border-radius:10px;background:#f5f6fa;color:#596274;font-size:13px;">
+                        <strong><?php esc_html_e( 'Hinweis:', 'order-integrity' ); ?></strong>
+                        <?php esc_html_e( 'Die aktuelle Version überwacht die Schritte direkt in WooCommerce. Externe Systeme wie Xero, JTL oder Versanddienste werden in einer späteren Version über eigene Integrationen angebunden.', 'order-integrity' ); ?>
+                    </div>
+
+                    <p style="margin:20px 0 0;">
+                        <button type="submit" name="oi_save_flow" value="1" class="button button-primary oi-button">
+                            ✓ <?php esc_html_e( 'Flow speichern', 'order-integrity' ); ?>
+                        </button>
+                    </p>
+                </div>
+
+                <div class="oi-card" style="padding:22px;max-width:1000px;margin-top:18px;">
+                    <h2 class="oi-section-title"><?php esc_html_e( 'Aktueller Ablauf', 'order-integrity' ); ?></h2>
+                    <div class="oi-flow">
+                        <?php
+                        $enabled_steps = array_values(
+                            array_filter(
+                                $flow,
+                                static function ( $step ) {
+                                    return ! empty( $step['enabled'] );
+                                }
+                            )
+                        );
+
+                        foreach ( $enabled_steps as $index => $step ) :
+                            ?>
+                            <div class="oi-step oi-step-success">
+                                <div class="oi-step-icon">✓</div>
+                                <div class="oi-step-name"><?php echo esc_html( $labels[ $step['key'] ] ?? $step['label'] ); ?></div>
+                                <div class="oi-step-source">WooCommerce</div>
+                                <div class="oi-step-state"><?php esc_html_e( 'Überwacht', 'order-integrity' ); ?></div>
+                            </div>
+                            <?php if ( $index < count( $enabled_steps ) - 1 ) : ?>
+                                <div class="oi-flow-arrow">→</div>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <?php
     }
 
     public function render_incidents(): void {
@@ -536,7 +773,7 @@ CSS;
         ?>
         <div class="wrap">
             <h1><?php esc_html_e( 'Order Integrity', 'order-integrity' ); ?></h1>
-            <p><?php esc_html_e( 'Prüft den Bestellfluss von Zahlung über Bestellung bis Fulfillment.', 'order-integrity' ); ?></p>
+            <p><?php esc_html_e( 'Prüft den Bestellablauf von Zahlung über Bestellung bis Auftragsabwicklung.', 'order-integrity' ); ?></p>
 
             <div style="display:flex;gap:16px;max-width:1100px;margin:20px 0;">
                 <?php $this->metric_card( __( 'Offene Vorfälle', 'order-integrity' ), $open ); ?>
@@ -583,8 +820,8 @@ CSS;
 
             <h2><?php esc_html_e( 'Aktive Regeln', 'order-integrity' ); ?></h2>
             <ul>
-                <li><?php esc_html_e( 'Payment erfolgreich, Order bleibt länger als 10 Minuten Pending/On-hold → kritisch.', 'order-integrity' ); ?></li>
-                <li><?php esc_html_e( 'Order bleibt länger als 24 Stunden Processing → Fulfillment-Warnung.', 'order-integrity' ); ?></li>
+                <li><?php esc_html_e( 'Zahlung erfolgreich, Bestellung bleibt länger als das konfigurierte Zeitlimit ausstehend → kritisch.', 'order-integrity' ); ?></li>
+                <li><?php esc_html_e( 'Bestellung bleibt länger als das konfigurierte Zeitlimit in Bearbeitung → Warnung zur Auftragsabwicklung.', 'order-integrity' ); ?></li>
                 <li><?php esc_html_e( 'Integritätsprüfung läuft automatisch alle 15 Minuten.', 'order-integrity' ); ?></li>
             </ul>
         </div>
@@ -655,37 +892,49 @@ CSS;
         }
     }
 
-    private function evaluate_order( WC_Order $order ): void {
-        $date_paid = $order->get_date_paid();
 
-        if ( $date_paid && $order->has_status( array( 'pending', 'on-hold' ) ) ) {
-            $timeout = max( 1, (int) get_option( 'oi_payment_order_timeout', 10 ) );
-            $age = time() - $date_paid->getTimestamp();
+    private function evaluate_order( WC_Order $order ): void {
+        $payment = $this->flow_step( 'payment' );
+        $order_step = $this->flow_step( 'order' );
+        $fulfillment = $this->flow_step( 'fulfillment' );
+
+        if (
+            $payment &&
+            $payment['enabled'] &&
+            $order_step &&
+            $order_step['enabled'] &&
+            $order->get_date_paid() &&
+            $order->has_status( array( 'pending', 'on-hold' ) )
+        ) {
+            $timeout = max( 1, (int) $payment['timeout'] );
+            $age = time() - $order->get_date_paid()->getTimestamp();
 
             if ( $age >= $timeout * MINUTE_IN_SECONDS ) {
                 $this->create_or_update_incident(
                     $order,
                     'payment_order_mismatch',
                     'critical',
-                    __( 'Zahlung ist bestätigt, aber der WooCommerce-Bestellstatus wurde nicht weiterverarbeitet.', 'order-integrity' ),
-                    __( 'Fulfillment, Lagerverarbeitung und Kundenkommunikation können dadurch blockiert oder verspätet sein.', 'order-integrity' )
+                    __( 'Zahlung ist bestätigt, aber der Bestellstatus wurde nicht weiterverarbeitet.', 'order-integrity' ),
+                    __( 'Die nächsten Prozessschritte können dadurch blockiert oder verspätet sein.', 'order-integrity' )
                 );
             }
         }
 
-        $date_created = $order->get_date_created();
-
         if (
-            $date_created &&
+            $order_step &&
+            $order_step['enabled'] &&
+            $fulfillment &&
+            $fulfillment['enabled'] &&
+            $order->get_date_created() &&
             $order->has_status( 'processing' ) &&
-            ( time() - $date_created->getTimestamp() ) >= (int) get_option( 'oi_fulfillment_timeout', 1440 ) * MINUTE_IN_SECONDS
+            ( time() - $order->get_date_created()->getTimestamp() ) >= $fulfillment['timeout'] * MINUTE_IN_SECONDS
         ) {
             $this->create_or_update_incident(
                 $order,
                 'fulfillment_timeout',
                 'warning',
-                __( 'Die Bestellung befindet sich ungewöhnlich lange im Status Processing.', 'order-integrity' ),
-                __( 'Eine manuelle Prüfung des Fulfillment-Prozesses ist erforderlich.', 'order-integrity' )
+                __( 'Die Bestellung befindet sich ungewöhnlich lange in der Auftragsabwicklung.', 'order-integrity' ),
+                __( 'Der weitere Versandprozess sollte manuell geprüft werden.', 'order-integrity' )
             );
         }
     }
