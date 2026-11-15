@@ -17,11 +17,11 @@ for i in {1..60}; do
 done
 
 mysql -uroot <<SQL
-CREATE DATABASE IF NOT EXISTS `$MYSQL_DATABASE`;
+CREATE DATABASE IF NOT EXISTS \`$MYSQL_DATABASE\`;
 CREATE USER IF NOT EXISTS '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';
-GRANT ALL PRIVILEGES ON `$MYSQL_DATABASE`.* TO '$MYSQL_USER'@'localhost';
+GRANT ALL PRIVILEGES ON \`$MYSQL_DATABASE\`.* TO '$MYSQL_USER'@'localhost';
 ALTER USER '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';
-GRANT ALL PRIVILEGES ON `$MYSQL_DATABASE`.* TO '$MYSQL_USER'@'localhost';
+GRANT ALL PRIVILEGES ON \`$MYSQL_DATABASE\`.* TO '$MYSQL_USER'@'localhost';
 ALTER USER 'root'@'localhost' IDENTIFIED BY '$MYSQL_ROOT_PASSWORD';
 FLUSH PRIVILEGES;
 SQL
@@ -32,9 +32,7 @@ export WORDPRESS_DB_USER=$MYSQL_USER
 export WORDPRESS_DB_PASSWORD=$MYSQL_PASSWORD
 export WORDPRESS_CONFIG_EXTRA="if (!defined('WP_DEBUG')) { define('WP_DEBUG', true); } if (!defined('WP_DEBUG_LOG')) { define('WP_DEBUG_LOG', true); } if (!defined('WP_DEBUG_DISPLAY')) { define('WP_DEBUG_DISPLAY', false); }"
 
-# Let the official WordPress entrypoint generate wp-config.php and normalize the
-# document root, but do not start Apache yet.
- /usr/local/bin/docker-entrypoint.sh true
+/usr/local/bin/docker-entrypoint.sh true
 
 if ! wp core is-installed --allow-root --path=/var/www/html >/dev/null 2>&1; then
   wp core install \
