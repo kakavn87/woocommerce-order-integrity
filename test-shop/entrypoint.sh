@@ -10,7 +10,9 @@ fi
 
 mysqld_safe --datadir=/var/lib/mysql --skip-networking=0 --bind-address=127.0.0.1 &
 for i in {1..60}; do
-  if mysqladmin ping -h 127.0.0.1 --silent; then break; fi
+  if mysqladmin ping -h 127.0.0.1 --silent; then
+    break
+  fi
   sleep 1
 done
 
@@ -27,4 +29,6 @@ export WORDPRESS_DB_NAME=$MYSQL_DATABASE
 export WORDPRESS_DB_USER=$MYSQL_USER
 export WORDPRESS_DB_PASSWORD=$MYSQL_PASSWORD
 
-exec apache2-foreground
+# Hand control back to the official WordPress entrypoint so it copies
+# WordPress into /var/www/html and generates wp-config.php.
+exec /usr/local/bin/docker-entrypoint.sh apache2-foreground
