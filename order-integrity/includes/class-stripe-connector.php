@@ -73,7 +73,6 @@ final class OI_Stripe_Connector {
                 'timeout' => 15,
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $secret,
-                    'Stripe-Version' => '2026-09-30.clover',
                 ),
             )
         );
