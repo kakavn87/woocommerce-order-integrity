@@ -47,15 +47,22 @@ if ! grep -q "HTTP_X_FORWARDED_PROTO" wp-config.php; then
   cat >> wp-config.php <<'PHP'
 
 // Render reverse-proxy HTTPS handling.
-if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+// Render terminates TLS before forwarding the request to Apache.
+if (
+    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+    || (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
+) {
     $_SERVER['HTTPS'] = 'on';
+    $_SERVER['SERVER_PORT'] = 443;
 }
 PHP
 fi
 
 wp config set WP_HOME "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
 wp config set WP_SITEURL "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
-wp config set FORCE_SSL_ADMIN true --raw --type=constant --allow-root
+# The public Render URL is already HTTPS. Do not force a second admin SSL redirect,
+# which can create a redirect loop behind the Render reverse proxy.
+wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 
 echo "==> Checking WordPress database..."
 wp db check --allow-root
