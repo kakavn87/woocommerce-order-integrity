@@ -338,7 +338,16 @@ CSS;
                 );
             }
 
-            if ( count( $flow ) < 2 ) {
+            $enabled_count = count(
+                array_filter(
+                    $flow,
+                    static function ( $step ) {
+                        return ! empty( $step['enabled'] );
+                    }
+                )
+            );
+
+            if ( $enabled_count < 2 ) {
                 $flow = self::default_flow_definition();
                 add_settings_error(
                     'oi_flow',
@@ -549,32 +558,21 @@ CSS;
         $status_label = 'open' === $incident->status ? __( 'Offen', 'order-integrity' ) : __( 'Behoben', 'order-integrity' );
         $severity_label = $is_critical ? __( 'Kritisch', 'order-integrity' ) : __( 'Warnung', 'order-integrity' );
 
-        $payment_state = 'success';
-        $order_state = 'success';
-        $stock_state = 'success';
-        $fulfillment_state = 'muted';
+        $flow = $this->get_flow_definition();
+
+        $step_state = array(
+            'payment'     => array( 'state' => 'success', 'label' => $order && $order->get_date_paid() ? __( 'Bezahlt', 'order-integrity' ) : __( 'Ausstehend', 'order-integrity' ) ),
+            'order'       => array( 'state' => 'success', 'label' => $order ? wc_get_order_status_name( $order->get_status() ) : __( 'Unbekannt', 'order-integrity' ) ),
+            'stock'       => array( 'state' => 'success', 'label' => __( 'Verarbeitet', 'order-integrity' ) ),
+            'fulfillment' => array( 'state' => 'muted', 'label' => __( 'Wartet', 'order-integrity' ) ),
+        );
 
         if ( 'payment_order_mismatch' === $incident->type ) {
-            $order_state = 'danger';
-            $stock_state = 'danger';
-            $fulfillment_state = 'muted';
+            $step_state['order'] = array( 'state' => 'danger', 'label' => __( 'Nicht weiterverarbeitet', 'order-integrity' ) );
+            $step_state['stock'] = array( 'state' => 'danger', 'label' => __( 'Nicht verarbeitet', 'order-integrity' ) );
         } elseif ( 'fulfillment_timeout' === $incident->type ) {
-            $fulfillment_state = 'warning';
+            $step_state['fulfillment'] = array( 'state' => 'warning', 'label' => __( 'Überfällig', 'order-integrity' ) );
         }
-
-        $payment_label = $order && $order->get_date_paid()
-            ? __( 'Bezahlt', 'order-integrity' )
-            : __( 'Ausstehend', 'order-integrity' );
-        $order_label = $order
-            ? wc_get_order_status_name( $order->get_status() )
-            : __( 'Unbekannt', 'order-integrity' );
-
-        $stock_label = 'danger' === $stock_state
-            ? __( 'Nicht verarbeitet', 'order-integrity' )
-            : __( 'Verarbeitet', 'order-integrity' );
-        $fulfillment_label = 'warning' === $fulfillment_state
-            ? __( 'Überfällig', 'order-integrity' )
-            : __( 'Wartet', 'order-integrity' );
 
         $payment_method = $order && $order->get_payment_method_title()
             ? $order->get_payment_method_title()
@@ -644,12 +642,33 @@ CSS;
 
                         <div class="oi-flow">
                             <?php
-                            $steps = array(
-                                array( 'name' => __( 'Zahlung', 'order-integrity' ), 'source' => $payment_method, 'state' => $payment_state, 'label' => $payment_label, 'icon' => '✓' ),
-                                array( 'name' => __( 'Bestellung', 'order-integrity' ), 'source' => 'WooCommerce', 'state' => $order_state, 'label' => $order_label, 'icon' => 'danger' === $order_state ? '×' : '✓' ),
-                                array( 'name' => __( 'Lagerbestand', 'order-integrity' ), 'source' => 'WooCommerce', 'state' => $stock_state, 'label' => $stock_label, 'icon' => 'danger' === $stock_state ? '×' : '✓' ),
-                                array( 'name' => __( 'Auftragsabwicklung', 'order-integrity' ), 'source' => __( 'Versand', 'order-integrity' ), 'state' => $fulfillment_state, 'label' => $fulfillment_label, 'icon' => 'muted' === $fulfillment_state ? '○' : '!' ),
+                            $step_names = array(
+                                'payment'     => __( 'Zahlung', 'order-integrity' ),
+                                'order'       => __( 'Bestellung', 'order-integrity' ),
+                                'stock'       => __( 'Lagerbestand', 'order-integrity' ),
+                                'fulfillment' => __( 'Auftragsabwicklung', 'order-integrity' ),
                             );
+                            $step_sources = array(
+                                'payment'     => $payment_method,
+                                'order'       => 'WooCommerce',
+                                'stock'       => 'WooCommerce',
+                                'fulfillment' => __( 'Versand', 'order-integrity' ),
+                            );
+
+                            $steps = array();
+                            foreach ( $flow as $configured_step ) {
+                                if ( empty( $configured_step['enabled'] ) || ! isset( $step_state[ $configured_step['key'] ] ) ) {
+                                    continue;
+                                }
+                                $state = $step_state[ $configured_step['key'] ];
+                                $steps[] = array(
+                                    'name'   => $step_names[ $configured_step['key'] ] ?? $configured_step['label'],
+                                    'source' => $step_sources[ $configured_step['key'] ] ?? 'WooCommerce',
+                                    'state'  => $state['state'],
+                                    'label'  => $state['label'],
+                                    'icon'   => 'danger' === $state['state'] ? '×' : ( 'warning' === $state['state'] ? '!' : ( 'muted' === $state['state'] ? '○' : '✓' ) ),
+                                );
+                            }
 
                             foreach ( $steps as $index => $step ) :
                                 $class = 'oi-step-' . $step['state'];
