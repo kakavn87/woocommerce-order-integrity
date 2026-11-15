@@ -744,7 +744,7 @@ CSS;
                     </section>
 
                     <section class="oi-card oi-side-card">
-                        <h2>ⓘ <?php esc_html_e( 'Details', 'order-integrity' ); ?></h2>
+                        <h2>ⓘ <?php esc_html_e( 'Einzelheiten', 'order-integrity' ); ?></h2>
                         <div class="oi-details">
                             <div class="oi-detail-row"><span><?php esc_html_e( 'Bestellstatus', 'order-integrity' ); ?></span><strong><?php echo esc_html( $order_label ); ?></strong></div>
                             <div class="oi-detail-row"><span><?php esc_html_e( 'Zahlungsstatus', 'order-integrity' ); ?></span><strong><?php echo esc_html( $payment_label ); ?></strong></div>
@@ -800,7 +800,7 @@ CSS;
                 <?php $this->metric_card( __( 'Warnungen', 'order-integrity' ), $warnings ); ?>
             </div>
 
-            <h2><?php esc_html_e( 'Order Flow', 'order-integrity' ); ?></h2>
+            <h2><?php esc_html_e( 'Bestellablauf', 'order-integrity' ); ?></h2>
             <p>
                 <strong><?php esc_html_e( 'Zahlung', 'order-integrity' ); ?></strong>
                 →
@@ -837,7 +837,7 @@ CSS;
                 </tbody>
             </table>
 
-            <h2><?php esc_html_e( 'Aktive Regeln', 'order-integrity' ); ?></h2>
+            <h2><?php esc_html_e( 'Aktive Prüfungen', 'order-integrity' ); ?></h2>
             <ul>
                 <li><?php esc_html_e( 'Zahlung erfolgreich, Bestellung bleibt länger als das konfigurierte Zeitlimit ausstehend → kritisch.', 'order-integrity' ); ?></li>
                 <li><?php esc_html_e( 'Bestellung bleibt länger als das konfigurierte Zeitlimit in Bearbeitung → Warnung zur Auftragsabwicklung.', 'order-integrity' ); ?></li>
