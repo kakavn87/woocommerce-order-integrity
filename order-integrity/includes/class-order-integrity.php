@@ -10,6 +10,7 @@ final class Order_Integrity {
     }
 
     public static function activate(): void {
+        add_filter( 'cron_schedules', array( __CLASS__, 'register_cron_schedules' ) );
         global $wpdb;
 
         $incidents = $wpdb->prefix . 'oi_incidents';
@@ -62,6 +63,14 @@ final class Order_Integrity {
         update_option( 'oi_version', OI_VERSION );
     }
 
+    public static function register_cron_schedules( array $schedules ): array {
+        $schedules['oi_fifteen_minutes'] = array(
+            'interval' => 15 * MINUTE_IN_SECONDS,
+            'display'  => __( 'Alle 15 Minuten', 'order-integrity' ),
+        );
+        return $schedules;
+    }
+
     public static function deactivate(): void {
         wp_clear_scheduled_hook( 'oi_integrity_scan' );
     }
@@ -109,6 +118,120 @@ final class Order_Integrity {
             'dashicons-shield',
             56
         );
+
+        add_submenu_page(
+            'order-integrity',
+            __( 'Vorfälle', 'order-integrity' ),
+            __( 'Vorfälle', 'order-integrity' ),
+            'manage_woocommerce',
+            'order-integrity-incidents',
+            array( $this, 'render_incidents' )
+        );
+    }
+
+    public function render_incidents(): void {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            return;
+        }
+
+        $incident_id = isset( $_GET['incident_id'] ) ? absint( $_GET['incident_id'] ) : 0;
+        if ( $incident_id > 0 ) {
+            $this->render_incident_detail( $incident_id );
+            return;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'oi_incidents';
+        $items = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY first_seen DESC LIMIT 100" );
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e( 'Vorfälle', 'order-integrity' ); ?></h1>
+            <table class="widefat striped">
+                <thead><tr>
+                    <th>ID</th><th><?php esc_html_e( 'Bestellung', 'order-integrity' ); ?></th>
+                    <th><?php esc_html_e( 'Problem', 'order-integrity' ); ?></th>
+                    <th><?php esc_html_e( 'Schweregrad', 'order-integrity' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'order-integrity' ); ?></th>
+                    <th><?php esc_html_e( 'Erkannt', 'order-integrity' ); ?></th>
+                </tr></thead>
+                <tbody>
+                <?php if ( empty( $items ) ) : ?>
+                    <tr><td colspan="6"><?php esc_html_e( 'Keine Vorfälle vorhanden.', 'order-integrity' ); ?></td></tr>
+                <?php else : foreach ( $items as $item ) : ?>
+                    <tr>
+                        <td>#<?php echo esc_html( $item->id ); ?></td>
+                        <td>#<?php echo esc_html( $item->order_id ); ?></td>
+                        <td><a href="<?php echo esc_url( admin_url( 'admin.php?page=order-integrity-incidents&incident_id=' . (int) $item->id ) ); ?>"><?php echo esc_html( $this->human_incident_type( $item->type ) ); ?></a></td>
+                        <td><?php echo esc_html( ucfirst( $item->severity ) ); ?></td>
+                        <td><?php echo esc_html( ucfirst( $item->status ) ); ?></td>
+                        <td><?php echo esc_html( $item->first_seen ); ?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    private function render_incident_detail( int $incident_id ): void {
+        global $wpdb;
+        $incidents = $wpdb->prefix . 'oi_incidents';
+        $events = $wpdb->prefix . 'oi_events';
+
+        $incident = $wpdb->get_row(
+            $wpdb->prepare( "SELECT * FROM {$incidents} WHERE id = %d", $incident_id )
+        );
+
+        if ( ! $incident ) {
+            echo '<div class="wrap"><div class="notice notice-error"><p>' . esc_html__( 'Vorfall nicht gefunden.', 'order-integrity' ) . '</p></div></div>';
+            return;
+        }
+
+        $timeline = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT event_type, event_data, created_at FROM {$events} WHERE order_id = %d ORDER BY created_at ASC LIMIT 100",
+                (int) $incident->order_id
+            )
+        );
+        ?>
+        <div class="wrap">
+            <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=order-integrity-incidents' ) ); ?>">← <?php esc_html_e( 'Alle Vorfälle', 'order-integrity' ); ?></a></p>
+            <h1><?php printf( esc_html__( 'Vorfall #%d', 'order-integrity' ), (int) $incident->id ); ?></h1>
+
+            <div style="display:flex;gap:20px;flex-wrap:wrap;max-width:1100px;">
+                <div class="card" style="padding:20px;min-width:280px;flex:1;">
+                    <h2><?php esc_html_e( 'Order Flow', 'order-integrity' ); ?></h2>
+                    <p style="font-size:18px;"><strong>Payment</strong> ✓ → <strong>Order</strong> <?php echo 'critical' === $incident->severity ? '⚠' : '✓'; ?> → <strong>Fulfillment</strong> ⚪</p>
+                    <p><strong><?php esc_html_e( 'Bestellung', 'order-integrity' ); ?>:</strong> #<?php echo esc_html( $incident->order_id ); ?></p>
+                    <p><strong><?php esc_html_e( 'Problem', 'order-integrity' ); ?>:</strong> <?php echo esc_html( $this->human_incident_type( $incident->type ) ); ?></p>
+                    <p><strong><?php esc_html_e( 'Schweregrad', 'order-integrity' ); ?>:</strong> <?php echo esc_html( ucfirst( $incident->severity ) ); ?></p>
+                </div>
+
+                <div class="card" style="padding:20px;min-width:280px;flex:1;">
+                    <h2><?php esc_html_e( 'Root Cause', 'order-integrity' ); ?></h2>
+                    <p><?php echo esc_html( $incident->root_cause ); ?></p>
+                    <h2><?php esc_html_e( 'Folgen', 'order-integrity' ); ?></h2>
+                    <p><?php echo esc_html( $incident->consequences ); ?></p>
+                </div>
+            </div>
+
+            <h2><?php esc_html_e( 'Timeline', 'order-integrity' ); ?></h2>
+            <table class="widefat striped" style="max-width:1100px;">
+                <thead><tr><th><?php esc_html_e( 'Zeit', 'order-integrity' ); ?></th><th><?php esc_html_e( 'Event', 'order-integrity' ); ?></th><th><?php esc_html_e( 'Details', 'order-integrity' ); ?></th></tr></thead>
+                <tbody>
+                <?php if ( empty( $timeline ) ) : ?>
+                    <tr><td colspan="3"><?php esc_html_e( 'Noch keine Events erfasst.', 'order-integrity' ); ?></td></tr>
+                <?php else : foreach ( $timeline as $event ) : ?>
+                    <tr>
+                        <td><?php echo esc_html( $event->created_at ); ?></td>
+                        <td><strong><?php echo esc_html( $event->event_type ); ?></strong></td>
+                        <td><?php echo esc_html( $event->event_data ); ?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
     }
 
     public function render_dashboard(): void {
