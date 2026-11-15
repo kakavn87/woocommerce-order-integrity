@@ -42,6 +42,21 @@ if [ ! -f wp-config.php ]; then
     --skip-check
 fi
 
+# Render terminates TLS at the proxy. Tell WordPress that the original request was HTTPS.
+if ! grep -q "HTTP_X_FORWARDED_PROTO" wp-config.php; then
+  cat >> wp-config.php <<'PHP'
+
+// Render reverse-proxy HTTPS handling.
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+}
+PHP
+fi
+
+wp config set WP_HOME "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
+wp config set WP_SITEURL "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
+wp config set FORCE_SSL_ADMIN true --raw --type=constant --allow-root
+
 echo "==> Checking WordPress database..."
 wp db check --allow-root
 
