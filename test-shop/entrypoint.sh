@@ -79,6 +79,19 @@ fi
 
 echo "==> Verifying WordPress installation..."
 wp core is-installed --allow-root
+
+# Ensure the disposable test account is a real administrator.
+# This is idempotent and also repairs an existing test database.
+if wp user get admin --allow-root >/dev/null 2>&1; then
+  wp user set-role admin administrator --allow-root
+else
+  wp user create admin test@example.com --role=administrator --user_pass="admin12346789" --allow-root
+fi
+
+# WooCommerce needs a writable log directory on every fresh container.
+mkdir -p /var/www/html/wp-content/uploads/wc-logs
+chown -R www-data:www-data /var/www/html/wp-content/uploads
+
 echo "==> Activating WooCommerce..."
 wp plugin activate woocommerce --allow-root
 echo "==> Activating Order Integrity..."
