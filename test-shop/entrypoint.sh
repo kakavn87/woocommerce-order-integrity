@@ -38,7 +38,6 @@ echo "==> WordPress public URL: $PUBLIC_URL"
 echo "==> Checking external WordPress database..."
 wp db check --allow-root
 
-# One-time clean reinstall of WordPress in the external database.
 if [ "${RESET_WORDPRESS:-0}" = "1" ]; then
   echo "==> RESET_WORDPRESS=1: resetting WordPress database..."
   wp db reset --yes --allow-root
@@ -69,14 +68,23 @@ fi
 echo "==> Admin capability check:"
 wp user get admin --fields=ID,user_login,roles --format=json --allow-root
 echo
-echo "==> Clearing any stale WooCommerce installation lock..."
-wp option delete wc_installing --allow-root >/dev/null 2>&1 || true
 
-echo "==> Activating WooCommerce..."
-wp plugin activate woocommerce --allow-root
-wp option delete wc_installing --allow-root >/dev/null 2>&1 || true
+echo "==> Clearing stale WooCommerce installation lock before loading WooCommerce..."
+wp option delete wc_installing --skip-plugins=woocommerce --allow-root >/dev/null 2>&1 || true
+
+echo "==> Checking WooCommerce..."
+if wp plugin is-active woocommerce --skip-plugins=woocommerce --allow-root >/dev/null 2>&1; then
+  echo "WooCommerce is already active."
+else
+  wp plugin activate woocommerce --skip-plugins=woocommerce --allow-root
+fi
+
+echo "==> Clearing WooCommerce installation lock after activation..."
+wp option delete wc_installing --skip-plugins=woocommerce --allow-root >/dev/null 2>&1 || true
+
 echo "==> Activating Order Integrity..."
-wp plugin activate order-integrity --allow-root
+wp plugin activate order-integrity --skip-plugins=woocommerce --allow-root
+
 echo "==> WordPress test shop ready with persistent external database."
 
 wait $APACHE_PID
