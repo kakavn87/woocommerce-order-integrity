@@ -42,22 +42,15 @@ if [ ! -f wp-config.php ]; then
     --skip-check
 fi
 
-# Render terminates TLS at the proxy. Tell WordPress that the original request was HTTPS.
-if ! grep -q "HTTP_X_FORWARDED_PROTO" wp-config.php; then
-  cat >> wp-config.php <<'PHP'
+# Render terminates TLS at the proxy. This test shop is HTTPS-only, so
+# always expose the original request to WordPress as HTTPS. This avoids
+# admin redirect loops when proxy headers are missing or normalized.
+cat >> wp-config.php <<'PHP'
 
-// Render reverse-proxy HTTPS handling.
-// Render terminates TLS before forwarding the request to Apache.
-// Accept comma-separated forwarded protocol values as well.
-if (
-    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos(strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']), 'https') !== false)
-    || (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
-) {
-    $_SERVER['HTTPS'] = 'on';
-    $_SERVER['SERVER_PORT'] = 443;
-}
+// Render test shop: public endpoint is HTTPS-only.
+$_SERVER['HTTPS'] = 'on';
+$_SERVER['SERVER_PORT'] = 443;
 PHP
-fi
 
 wp config set WP_HOME "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
 wp config set WP_SITEURL "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
