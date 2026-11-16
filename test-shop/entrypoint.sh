@@ -65,8 +65,16 @@ else
   exit 1
 fi
 
+echo "==> Repairing core administrator capabilities..."
+wp cap add administrator read manage_options activate_plugins edit_posts upload_files --allow-root >/dev/null
+wp user set-role admin administrator --allow-root >/dev/null
+
 echo "==> Admin capability check:"
 wp user get admin --fields=ID,user_login,roles --format=json --allow-root
+echo "==> Administrator capability check:"
+wp cap list administrator --format=json --allow-root
+echo "==> User capability check:"
+wp user list-caps admin --format=json --allow-root
 echo
 
 echo "==> Clearing stale WooCommerce installation lock before loading WooCommerce..."
