@@ -32,7 +32,7 @@ wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN true --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
 
-SALT_SEED="$WORDPRESS_DB_PASSWORD|$PUBLIC_URL"
+SALT_SEED="oi-render-fixed-auth|$PUBLIC_URL"
 for SALT_NAME in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT; do
   SALT_VALUE="$(printf "%s|%s" "$SALT_SEED" "$SALT_NAME" | sha256sum | cut -d" " -f1)"
   wp config set "$SALT_NAME" "$SALT_VALUE" --type=constant --allow-root
@@ -103,9 +103,9 @@ else
 fi
 
 if ! wp option get oi_auth_migration_v5 --allow-root >/dev/null 2>&1; then
-  echo "==> Invalidating administrator sessions for authentication migration v4..."
+  echo "==> Invalidating administrator sessions for authentication migration v5..."
   wp user session destroy admin --all --allow-root >/dev/null 2>&1 || true
-  wp option add oi_auth_migration_v4 1 --allow-root >/dev/null 2>&1 || wp option update oi_auth_migration_v4 1 --allow-root >/dev/null
+  wp option add oi_auth_migration_v5 1 --allow-root >/dev/null 2>&1 || wp option update oi_auth_migration_v5 1 --allow-root >/dev/null
 fi
 
 echo "==> Ensuring administrator role..."
