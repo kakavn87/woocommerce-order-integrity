@@ -102,7 +102,7 @@ else
   fi
 fi
 
-if ! wp option get oi_auth_migration_v4 --allow-root >/dev/null 2>&1; then
+if ! wp option get oi_auth_migration_v5 --allow-root >/dev/null 2>&1; then
   echo "==> Invalidating administrator sessions for authentication migration v4..."
   wp user session destroy admin --all --allow-root >/dev/null 2>&1 || true
   wp option add oi_auth_migration_v4 1 --allow-root >/dev/null 2>&1 || wp option update oi_auth_migration_v4 1 --allow-root >/dev/null
