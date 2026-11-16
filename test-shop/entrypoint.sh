@@ -50,7 +50,6 @@ $_SERVER['HTTPS'] = 'on';
 $_SERVER['SERVER_PORT'] = 443;
 PHP
 
-# Use Render's actual public URL instead of hard-coding a service name.
 PUBLIC_URL="${RENDER_EXTERNAL_URL:-https://oi-test-shop-clean.onrender.com}"
 
 wp config set WP_HOME "$PUBLIC_URL" --type=constant --allow-root
@@ -79,18 +78,6 @@ fi
 
 echo "==> Verifying WordPress installation..."
 wp core is-installed --allow-root
-
-# Ensure the disposable test account is a real administrator.
-# This is idempotent and also repairs an existing test database.
-wp user session destroy admin --all --allow-root || true
-wp user set-role admin administrator --allow-root
-wp user meta update admin wp_user_level 10 --allow-root
-wp eval 'if (!user_can(get_user_by("login", "admin"), "manage_options")) { fwrite(STDERR, "ERROR: admin lacks manage_options\\n"); exit(1); }' --allow-root
-
-# WooCommerce needs a writable log directory on every fresh container.
-mkdir -p /var/www/html/wp-content/uploads/wc-logs
-chown -R www-data:www-data /var/www/html/wp-content/uploads
-
 echo "==> Activating WooCommerce..."
 wp plugin activate woocommerce --allow-root
 echo "==> Activating Order Integrity..."
