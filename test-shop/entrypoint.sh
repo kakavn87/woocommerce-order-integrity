@@ -80,6 +80,11 @@ add_action('set_auth_cookie', function ($auth_cookie, $expire, $expiration, $use
     error_log('AUTHDBG set_auth_cookie user_id=' . (int) $user_id . ' scheme=' . $scheme);
 }, 10, 5);
 add_action('clear_auth_cookie', function () { error_log('AUTHDBG clear_auth_cookie'); });
+add_action('auth_cookie_malformed', function () { error_log('AUTHDBG cookie_failure=malformed'); });
+add_action('auth_cookie_expired', function () { error_log('AUTHDBG cookie_failure=expired'); });
+add_action('auth_cookie_bad_username', function () { error_log('AUTHDBG cookie_failure=bad_username'); });
+add_action('auth_cookie_bad_hash', function () { error_log('AUTHDBG cookie_failure=bad_hash'); });
+add_action('auth_cookie_bad_session_token', function () { error_log('AUTHDBG cookie_failure=bad_session_token'); });
 add_action('wp_redirect', function ($location, $status) {
     error_log('AUTHDBG wp_redirect status=' . (int)$status . ' location=' . $location . ' request=' . ($_SERVER['REQUEST_URI'] ?? ''));
 }, 10, 2);
