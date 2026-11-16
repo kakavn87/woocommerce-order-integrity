@@ -41,6 +41,19 @@ wp config set SITECOOKIEPATH "/" --type=constant --allow-root
 wp config set ADMIN_COOKIE_PATH "/" --type=constant --allow-root
 wp config set PLUGINS_COOKIE_PATH "/" --type=constant --allow-root
 
+# Temporary auth diagnostics for Render reverse-proxy login debugging.
+mkdir -p /var/www/html/wp-content/mu-plugins
+cat > /var/www/html/wp-content/mu-plugins/render-auth-debug.php <<'PHP'
+<?php
+add_action('init', function () {
+    $user = wp_get_current_user();
+    error_log('AUTHDBG init user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
+}, 1);
+add_action('wp_login', function ($user_login, $user) {
+    error_log('AUTHDBG wp_login user_id=' . (int) $user->ID . ' login=' . $user_login . ' auth_cookie_valid=' . (wp_validate_auth_cookie() ? '1' : '0'));
+}, 10, 2);
+PHP
+
 echo "==> WordPress public URL: $PUBLIC_URL"
 echo "==> Checking external WordPress database..."
 wp db check --allow-root
