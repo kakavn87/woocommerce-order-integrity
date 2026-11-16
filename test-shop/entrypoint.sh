@@ -38,15 +38,16 @@ for SALT_NAME in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECU
   wp config set "$SALT_NAME" "$SALT_VALUE" --type=constant --allow-root
 done
 
-wp config delete COOKIEHASH --type=constant --allow-root >/dev/null 2>&1 || true
+# Pin COOKIEHASH to the public Render hostname so auth cookies use the same
+# name even if an old database value contains a different home/siteurl.
+COOKIE_HASH="$(printf "%s" "$PUBLIC_URL" | md5sum | cut -d" " -f1)"
+wp config set COOKIEHASH "$COOKIE_HASH" --type=constant --allow-root
 wp config set COOKIE_DOMAIN "" --type=constant --allow-root
 wp config set COOKIEPATH "/" --type=constant --allow-root
 wp config set SITECOOKIEPATH "/" --type=constant --allow-root
 wp config set ADMIN_COOKIE_PATH "/" --type=constant --allow-root
 wp config set PLUGINS_COOKIE_PATH "/" --type=constant --allow-root
 
-# WordPress base image does not guarantee that the MU-plugin directory exists.
-# Create it before writing proxy/auth diagnostics.
 mkdir -p /var/www/html/wp-content/mu-plugins
 
 cat > /var/www/html/wp-content/mu-plugins/render-proxy.php <<'PHP'
@@ -66,7 +67,7 @@ cat > /var/www/html/wp-content/mu-plugins/render-auth-debug.php <<'PHP'
 add_action('init', function () {
     $user = wp_get_current_user();
     $validated = wp_validate_auth_cookie();
-    error_log('AUTHDBG init user_id=' . (int) $user->ID . ' validated_id=' . (int) $validated . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' scheme=' . (is_ssl() ? 'ssl' : 'plain') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
+    error_log('AUTHDBG init user_id=' . (int) $user->ID . ' validated_id=' . (int) $validated . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' scheme=' . (is_ssl() ? 'ssl' : 'plain') . ' cookiehash=' . (defined('COOKIEHASH') ? COOKIEHASH : 'undefined') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
 }, 1);
 add_action('admin_init', function () {
     $user = wp_get_current_user();
@@ -104,7 +105,7 @@ fi
 if ! wp option get oi_auth_migration_v4 --allow-root >/dev/null 2>&1; then
   echo "==> Invalidating administrator sessions for authentication migration v4..."
   wp user session destroy admin --all --allow-root >/dev/null 2>&1 || true
-  wp option add oi_auth_migration_v3 1 --allow-root >/dev/null 2>&1 || wp option update oi_auth_migration_v3 1 --allow-root >/dev/null
+  wp option add oi_auth_migration_v4 1 --allow-root >/dev/null 2>&1 || wp option update oi_auth_migration_v4 1 --allow-root >/dev/null
 fi
 
 echo "==> Ensuring administrator role..."
