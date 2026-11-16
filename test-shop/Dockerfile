@@ -6,7 +6,7 @@ ENV MYSQL_PASSWORD=test-password
 ENV MYSQL_ROOT_PASSWORD=root-password
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl unzip mariadb-server \
+    && apt-get install -y --no-install-recommends curl unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://downloads.wordpress.org/plugin/woocommerce.latest-stable.zip -o /tmp/woocommerce.zip \
@@ -24,7 +24,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-
 RUN rm -rf /var/www/html/* \
     && cp -a /usr/src/wordpress/. /var/www/html/
 
-RUN curl -fsSL "https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/entrypoint.sh?cachebust=fb5b80c5" \
+RUN curl -fsSL "https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/entrypoint.sh?cachebust=1314485877" \
     -o /usr/local/bin/oi-test-shop-entrypoint \
     && chmod +x /usr/local/bin/oi-test-shop-entrypoint
 
