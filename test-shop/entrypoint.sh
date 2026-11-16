@@ -29,7 +29,7 @@ PUBLIC_URL="${RENDER_EXTERNAL_URL:-https://oi-test-shop-clean.onrender.com}"
 
 wp config set WP_HOME "$PUBLIC_URL" --type=constant --allow-root
 wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
-wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
+wp config set FORCE_SSL_ADMIN true --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
 
 SALT_SEED="$WORDPRESS_DB_PASSWORD|$PUBLIC_URL"
@@ -101,8 +101,8 @@ else
   fi
 fi
 
-if ! wp option get oi_auth_migration_v3 --allow-root >/dev/null 2>&1; then
-  echo "==> Invalidating administrator sessions for authentication migration v3..."
+if ! wp option get oi_auth_migration_v4 --allow-root >/dev/null 2>&1; then
+  echo "==> Invalidating administrator sessions for authentication migration v4..."
   wp user session destroy admin --all --allow-root >/dev/null 2>&1 || true
   wp option add oi_auth_migration_v3 1 --allow-root >/dev/null 2>&1 || wp option update oi_auth_migration_v3 1 --allow-root >/dev/null
 fi
