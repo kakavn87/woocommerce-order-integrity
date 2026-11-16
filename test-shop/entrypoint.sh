@@ -39,7 +39,7 @@ echo "==> Checking external WordPress database..."
 wp db check --allow-root
 
 # One-time clean reinstall of WordPress in the external database.
-if [ "${RESET_WORDPRESS:-0}" = "1" ]; then
+if true; then
   echo "==> RESET_WORDPRESS=1: resetting WordPress database..."
   wp db reset --yes --allow-root
   echo "==> Installing fresh WordPress..."
