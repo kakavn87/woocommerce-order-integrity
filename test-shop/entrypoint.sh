@@ -59,6 +59,12 @@ echo "==> Verifying WordPress installation..."
 wp core is-installed --allow-root
 echo "==> Ensuring administrator role..."
 wp user set-role admin administrator --allow-root
+wp user update admin --role=administrator --allow-root
+wp user meta update admin wp_capabilities 'a:1:{s:13:"administrator";b:1;}' --allow-root
+wp user meta update admin wp_user_level '10' --allow-root
+echo "==> Admin capability check:"
+wp eval 'echo wp_json_encode(array("id"=>get_current_user_id(),"role"=>get_user_by("login","admin")->roles,"caps"=>get_user_by("login","admin")->allcaps));' --allow-root || true
+echo
 
 echo "==> Activating WooCommerce..."
 wp plugin activate woocommerce --allow-root
