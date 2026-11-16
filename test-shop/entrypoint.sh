@@ -82,11 +82,10 @@ wp core is-installed --allow-root
 
 # Ensure the disposable test account is a real administrator.
 # This is idempotent and also repairs an existing test database.
-if wp user get admin --allow-root >/dev/null 2>&1; then
-  wp user set-role admin administrator --allow-root
-else
-  wp user create admin test@example.com --role=administrator --user_pass="admin12346789" --allow-root
-fi
+wp user session destroy admin --all --allow-root || true
+wp user set-role admin administrator --allow-root
+wp user meta update admin wp_user_level 10 --allow-root
+wp eval 'if (!user_can(get_user_by("login", "admin"), "manage_options")) { fwrite(STDERR, "ERROR: admin lacks manage_options\\n"); exit(1); }' --allow-root
 
 # WooCommerce needs a writable log directory on every fresh container.
 mkdir -p /var/www/html/wp-content/uploads/wc-logs
