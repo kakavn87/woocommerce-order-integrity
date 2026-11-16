@@ -217,7 +217,7 @@ CSS;
         add_menu_page(
             __( 'Order Integrity', 'order-integrity' ),
             __( 'Order Integrity', 'order-integrity' ),
-            'manage_woocommerce',
+            'manage_options',
             'order-integrity',
             array( $this, 'render_dashboard' ),
             'dashicons-shield',
@@ -228,7 +228,7 @@ CSS;
             'order-integrity',
             __( 'Vorfälle', 'order-integrity' ),
             __( 'Vorfälle', 'order-integrity' ),
-            'manage_woocommerce',
+            'manage_options',
             'order-integrity-incidents',
             array( $this, 'render_incidents' )
         );
@@ -237,7 +237,7 @@ CSS;
             'order-integrity',
             __( 'Prozess-Flow', 'order-integrity' ),
             __( 'Prozess-Flow', 'order-integrity' ),
-            'manage_woocommerce',
+            'manage_options',
             'order-integrity-flow',
             array( $this, 'render_flow_settings' )
         );
@@ -246,7 +246,7 @@ CSS;
             'order-integrity',
             __( 'Integrationen', 'order-integrity' ),
             __( 'Integrationen', 'order-integrity' ),
-            'manage_woocommerce',
+            'manage_options',
             'order-integrity-integrations',
             array( $this, 'render_integrations' )
         );
@@ -255,7 +255,7 @@ CSS;
 
 
     public function render_integrations(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
 
@@ -367,7 +367,7 @@ CSS;
     }
 
     public function run_manual_scan(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( esc_html__( 'Keine Berechtigung.', 'order-integrity' ) );
         }
 
@@ -379,7 +379,7 @@ CSS;
     }
 
     public function test_stripe_connection(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( esc_html__( 'Keine Berechtigung.', 'order-integrity' ) );
         }
 
@@ -533,7 +533,7 @@ CSS;
     }
 
     public function render_flow_settings(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
 
@@ -695,7 +695,7 @@ CSS;
     }
 
     public function render_incidents(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
 
@@ -987,7 +987,7 @@ CSS;
     }
 
     public function render_dashboard(): void {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
             return;
         }
 
