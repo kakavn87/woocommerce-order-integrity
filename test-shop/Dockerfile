@@ -24,7 +24,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-
 RUN rm -rf /var/www/html/* \
     && cp -a /usr/src/wordpress/. /var/www/html/
 
-RUN curl -fsSL "https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/entrypoint.sh?cachebust=1763304300" \
+RUN curl -fsSL "https://raw.githubusercontent.com/kakavn87/woocommerce-order-integrity/main/test-shop/entrypoint.sh?cachebust=1763304500" \
     -o /usr/local/bin/oi-test-shop-entrypoint \
     && chmod +x /usr/local/bin/oi-test-shop-entrypoint
 
