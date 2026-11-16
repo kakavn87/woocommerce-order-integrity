@@ -34,6 +34,13 @@ wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
 
+# Explicit cookie paths/domain make authentication deterministic behind Render's reverse proxy.
+wp config set COOKIE_DOMAIN "" --type=constant --allow-root
+wp config set COOKIEPATH "/" --type=constant --allow-root
+wp config set SITECOOKIEPATH "/" --type=constant --allow-root
+wp config set ADMIN_COOKIE_PATH "/" --type=constant --allow-root
+wp config set PLUGINS_COOKIE_PATH "/" --type=constant --allow-root
+
 echo "==> WordPress public URL: $PUBLIC_URL"
 echo "==> Checking external WordPress database..."
 wp db check --allow-root
@@ -89,10 +96,8 @@ fi
 
 echo "==> Clearing WooCommerce installation lock after activation..."
 wp option delete wc_installing --skip-plugins=woocommerce --allow-root >/dev/null 2>&1 || true
-
 echo "==> Activating Order Integrity..."
 wp plugin activate order-integrity --skip-plugins=woocommerce --allow-root
-
 echo "==> WordPress test shop ready with persistent external database."
 
 wait $APACHE_PID
