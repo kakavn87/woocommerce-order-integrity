@@ -42,9 +42,7 @@ if [ ! -f wp-config.php ]; then
     --skip-check
 fi
 
-# Render terminates TLS at the proxy. This test shop is HTTPS-only, so
-# always expose the original request to WordPress as HTTPS. This avoids
-# admin redirect loops when proxy headers are missing or normalized.
+# Render terminates TLS at the proxy. This disposable test shop is HTTPS-only.
 cat >> wp-config.php <<'PHP'
 
 // Render test shop: public endpoint is HTTPS-only.
@@ -52,12 +50,14 @@ $_SERVER['HTTPS'] = 'on';
 $_SERVER['SERVER_PORT'] = 443;
 PHP
 
-wp config set WP_HOME "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
-wp config set WP_SITEURL "https://oi-test-shop-v5fg.onrender.com" --type=constant --allow-root
-# The public Render URL is already HTTPS. Do not force a second admin SSL redirect,
-# which can create a redirect loop behind the Render reverse proxy.
+# Use Render's actual public URL instead of hard-coding a service name.
+PUBLIC_URL="${RENDER_EXTERNAL_URL:-https://oi-test-shop-clean.onrender.com}"
+
+wp config set WP_HOME "$PUBLIC_URL" --type=constant --allow-root
+wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 
+echo "==> WordPress public URL: $PUBLIC_URL"
 echo "==> Checking WordPress database..."
 wp db check --allow-root
 
@@ -65,7 +65,7 @@ if ! wp core is-installed --allow-root >/dev/null 2>&1; then
   echo "==> WordPress is not installed. Installing automatically..."
   wp core install \
     --allow-root \
-    --url="https://oi-test-shop-v5fg.onrender.com" \
+    --url="$PUBLIC_URL" \
     --title="Order Integrity Test Shop" \
     --admin_user="admin" \
     --admin_password="admin12346789" \
@@ -73,17 +73,16 @@ if ! wp core is-installed --allow-root >/dev/null 2>&1; then
     --skip-email
 else
   echo "==> WordPress is already installed."
+  wp option update home "$PUBLIC_URL" --allow-root
+  wp option update siteurl "$PUBLIC_URL" --allow-root
 fi
 
 echo "==> Verifying WordPress installation..."
 wp core is-installed --allow-root
-
 echo "==> Activating WooCommerce..."
 wp plugin activate woocommerce --allow-root
-
 echo "==> Activating Order Integrity..."
 wp plugin activate order-integrity --allow-root
-
 echo "==> WordPress test shop ready."
 
 exec apache2-foreground
