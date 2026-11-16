@@ -69,8 +69,12 @@ fi
 echo "==> Admin capability check:"
 wp user get admin --fields=ID,user_login,roles --format=json --allow-root
 echo
+echo "==> Clearing any stale WooCommerce installation lock..."
+wp option delete wc_installing --allow-root >/dev/null 2>&1 || true
+
 echo "==> Activating WooCommerce..."
 wp plugin activate woocommerce --allow-root
+wp option delete wc_installing --allow-root >/dev/null 2>&1 || true
 echo "==> Activating Order Integrity..."
 wp plugin activate order-integrity --allow-root
 echo "==> WordPress test shop ready with persistent external database."
