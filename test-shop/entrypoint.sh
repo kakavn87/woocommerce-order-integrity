@@ -1,54 +1,29 @@
 #!/bin/bash
 set -e
 
-mkdir -p /run/mysqld
-chown -R mysql:mysql /run/mysqld /var/lib/mysql
-
-if [ ! -d /var/lib/mysql/mysql ]; then
-  mariadb-install-db --user=mysql --datadir=/var/lib/mysql >/dev/null
-fi
-
-mariadbd-safe --datadir=/var/lib/mysql --skip-networking=0 --bind-address=127.0.0.1 &
-for i in {1..60}; do
-  if mysqladmin ping -h 127.0.0.1 --silent >/dev/null 2>&1; then
-    break
-  fi
-  if [ "$i" -eq 60 ]; then
-    echo "ERROR: MariaDB did not become ready."
-    exit 1
-  fi
-  sleep 1
-done
-
-mysql -uroot <<SQL
-CREATE DATABASE IF NOT EXISTS \`$MYSQL_DATABASE\`;
-CREATE USER IF NOT EXISTS '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';
-GRANT ALL PRIVILEGES ON \`$MYSQL_DATABASE\`.* TO '$MYSQL_USER'@'localhost';
-ALTER USER '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';
-ALTER USER 'root'@'localhost' IDENTIFIED BY '$MYSQL_ROOT_PASSWORD';
-FLUSH PRIVILEGES;
-SQL
-
 cd /var/www/html
 
+# WordPress uses an external persistent MySQL/MariaDB database.
+# Render's local filesystem is ephemeral, so the database must not live in this container.
+: "${WORDPRESS_DB_HOST:?WORDPRESS_DB_HOST is required}"
+: "${WORDPRESS_DB_NAME:?WORDPRESS_DB_NAME is required}"
+: "${WORDPRESS_DB_USER:?WORDPRESS_DB_USER is required}"
+: "${WORDPRESS_DB_PASSWORD:?WORDPRESS_DB_PASSWORD is required}"
+
 if [ ! -f wp-config.php ]; then
-  echo "==> Creating WordPress configuration..."
-  wp config create \
-    --allow-root \
-    --dbname="$MYSQL_DATABASE" \
-    --dbuser="$MYSQL_USER" \
-    --dbpass="$MYSQL_PASSWORD" \
-    --dbhost="127.0.0.1:3306" \
-    --skip-check
+  echo "==> Creating WordPress configuration for external database..."
+  wp config create     --allow-root     --dbname="$WORDPRESS_DB_NAME"     --dbuser="$WORDPRESS_DB_USER"     --dbpass="$WORDPRESS_DB_PASSWORD"     --dbhost="$WORDPRESS_DB_HOST"     --skip-check
 fi
 
-# Render terminates TLS at the proxy. This disposable test shop is HTTPS-only.
-cat >> wp-config.php <<'PHP'
+# Render terminates TLS at the proxy. This test shop is HTTPS-only.
+if ! grep -q "Render test shop: public endpoint is HTTPS-only" wp-config.php; then
+  cat >> wp-config.php <<'PHP'
 
 // Render test shop: public endpoint is HTTPS-only.
 $_SERVER['HTTPS'] = 'on';
 $_SERVER['SERVER_PORT'] = 443;
 PHP
+fi
 
 PUBLIC_URL="${RENDER_EXTERNAL_URL:-https://oi-test-shop-clean.onrender.com}"
 
@@ -56,22 +31,20 @@ wp config set WP_HOME "$PUBLIC_URL" --type=constant --allow-root
 wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 
+# Enzonic requires TLS for every MySQL connection.
+# WordPress exposes the mysqli client flags through MYSQL_CLIENT_FLAGS.
+wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
+
 echo "==> WordPress public URL: $PUBLIC_URL"
-echo "==> Checking WordPress database..."
+echo "==> External database host: $WORDPRESS_DB_HOST"
+echo "==> Checking external WordPress database..."
 wp db check --allow-root
 
 if ! wp core is-installed --allow-root >/dev/null 2>&1; then
-  echo "==> WordPress is not installed. Installing automatically..."
-  wp core install \
-    --allow-root \
-    --url="$PUBLIC_URL" \
-    --title="Order Integrity Test Shop" \
-    --admin_user="admin" \
-    --admin_password="admin12346789" \
-    --admin_email="test@example.com" \
-    --skip-email
+  echo "==> WordPress is not installed. Installing into external database..."
+  wp core install     --allow-root     --url="$PUBLIC_URL"     --title="Order Integrity Test Shop"     --admin_user="admin"     --admin_password="admin12346789"     --admin_email="test@example.com"     --skip-email
 else
-  echo "==> WordPress is already installed."
+  echo "==> WordPress is already installed in external database."
   wp option update home "$PUBLIC_URL" --allow-root
   wp option update siteurl "$PUBLIC_URL" --allow-root
 fi
@@ -82,6 +55,6 @@ echo "==> Activating WooCommerce..."
 wp plugin activate woocommerce --allow-root
 echo "==> Activating Order Integrity..."
 wp plugin activate order-integrity --allow-root
-echo "==> WordPress test shop ready."
+echo "==> WordPress test shop ready with persistent external database."
 
 exec apache2-foreground
