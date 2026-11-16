@@ -49,6 +49,10 @@ add_action('init', function () {
     $user = wp_get_current_user();
     error_log('AUTHDBG init user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
 }, 1);
+add_action('admin_init', function () {
+    $user = wp_get_current_user();
+    error_log('AUTHDBG admin_init user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
+}, 1);
 add_action('wp_login', function ($user_login, $user) {
     error_log('AUTHDBG wp_login user_id=' . (int) $user->ID . ' login=' . $user_login . ' auth_cookie_valid=' . (wp_validate_auth_cookie() ? '1' : '0'));
 }, 10, 2);
