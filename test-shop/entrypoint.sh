@@ -3,7 +3,6 @@ set -e
 
 cd /var/www/html
 
-# Start Apache immediately so Render detects the web port while WordPress initializes.
 apache2-foreground &
 APACHE_PID=$!
 trap "kill $APACHE_PID 2>/dev/null || true" EXIT
@@ -33,15 +32,13 @@ wp config set WP_HOME "$PUBLIC_URL" --type=constant --allow-root
 wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
-
-# Explicit cookie paths/domain make authentication deterministic behind Render's reverse proxy.
 wp config set COOKIE_DOMAIN "" --type=constant --allow-root
 wp config set COOKIEPATH "/" --type=constant --allow-root
 wp config set SITECOOKIEPATH "/" --type=constant --allow-root
 wp config set ADMIN_COOKIE_PATH "/" --type=constant --allow-root
 wp config set PLUGINS_COOKIE_PATH "/" --type=constant --allow-root
 
-# Temporary auth diagnostics for Render reverse-proxy login debugging.
+# Temporary diagnostics for the redirect that occurs before admin_init.
 mkdir -p /var/www/html/wp-content/mu-plugins
 cat > /var/www/html/wp-content/mu-plugins/render-auth-debug.php <<'PHP'
 <?php
@@ -49,12 +46,31 @@ add_action('init', function () {
     $user = wp_get_current_user();
     error_log('AUTHDBG init user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
 }, 1);
+
 add_action('admin_init', function () {
     $user = wp_get_current_user();
     error_log('AUTHDBG admin_init user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
 }, 1);
+
 add_action('wp_login', function ($user_login, $user) {
     error_log('AUTHDBG wp_login user_id=' . (int) $user->ID . ' login=' . $user_login . ' auth_cookie_valid=' . (wp_validate_auth_cookie() ? '1' : '0'));
+}, 10, 2);
+
+add_action('set_auth_cookie', function ($auth_cookie, $expire, $expiration, $user_id, $scheme) {
+    error_log('AUTHDBG set_auth_cookie user_id=' . (int) $user_id . ' scheme=' . $scheme . ' expire=' . (int) $expire . ' expiration=' . (int) $expiration . ' cookie_domain=' . (defined('COOKIE_DOMAIN') ? COOKIE_DOMAIN : '(unset)') . ' cookie_path=' . (defined('COOKIEPATH') ? COOKIEPATH : '(unset)'));
+}, 10, 5);
+
+add_action('clear_auth_cookie', function () {
+    error_log('AUTHDBG clear_auth_cookie');
+});
+
+add_action('auth_redirect', function () {
+    $user = wp_get_current_user();
+    error_log('AUTHDBG auth_redirect user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' request=' . ($_SERVER['REQUEST_URI'] ?? '') . ' referer=' . ($_SERVER['HTTP_REFERER'] ?? ''));
+});
+
+add_action('wp_redirect', function ($location, $status) {
+    error_log('AUTHDBG wp_redirect status=' . (int) $status . ' location=' . $location . ' request=' . ($_SERVER['REQUEST_URI'] ?? ''));
 }, 10, 2);
 PHP
 
@@ -80,7 +96,6 @@ fi
 
 echo "==> Verifying WordPress installation..."
 wp core is-installed --allow-root
-
 echo "==> Ensuring administrator role..."
 if wp user get admin --field=ID --allow-root >/dev/null 2>&1; then
   wp user set-role admin administrator --allow-root
@@ -103,14 +118,12 @@ echo
 
 echo "==> Clearing stale WooCommerce installation lock before loading WooCommerce..."
 wp option delete wc_installing --skip-plugins=woocommerce --allow-root >/dev/null 2>&1 || true
-
 echo "==> Checking WooCommerce..."
 if wp plugin is-active woocommerce --skip-plugins=woocommerce --allow-root >/dev/null 2>&1; then
   echo "WooCommerce is already active."
 else
   wp plugin activate woocommerce --skip-plugins=woocommerce --allow-root
 fi
-
 echo "==> Clearing WooCommerce installation lock after activation..."
 wp option delete wc_installing --skip-plugins=woocommerce --allow-root >/dev/null 2>&1 || true
 echo "==> Activating Order Integrity..."
