@@ -3,6 +3,11 @@ set -e
 
 cd /var/www/html
 
+# Start Apache immediately so Render detects the web port while WordPress initialization runs.
+apache2-foreground &
+APACHE_PID=$!
+trap "kill $APACHE_PID 2>/dev/null || true" EXIT
+
 # WordPress uses an external persistent MySQL/MariaDB database.
 # Render's local filesystem is ephemeral, so the database must not live in this container.
 : "${WORDPRESS_DB_HOST:?WORDPRESS_DB_HOST is required}"
@@ -57,4 +62,4 @@ echo "==> Activating Order Integrity..."
 wp plugin activate order-integrity --allow-root
 echo "==> WordPress test shop ready with persistent external database."
 
-exec apache2-foreground
+wait $APACHE_PID
