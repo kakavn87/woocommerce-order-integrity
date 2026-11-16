@@ -32,14 +32,12 @@ wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
 
-# Stable salts across container replacements.
 SALT_SEED="$WORDPRESS_DB_PASSWORD|$PUBLIC_URL"
 for SALT_NAME in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT; do
   SALT_VALUE="$(printf "%s|%s" "$SALT_SEED" "$SALT_NAME" | sha256sum | cut -d" " -f1)"
   wp config set "$SALT_NAME" "$SALT_VALUE" --type=constant --allow-root
 done
 
-# Explicit cookie settings. Do not use COOKIEHASH: WordPress derives it from siteurl.
 wp config delete COOKIEHASH --type=constant --allow-root >/dev/null 2>&1 || true
 wp config set COOKIE_DOMAIN "" --type=constant --allow-root
 wp config set COOKIEPATH "/" --type=constant --allow-root
@@ -47,7 +45,10 @@ wp config set SITECOOKIEPATH "/" --type=constant --allow-root
 wp config set ADMIN_COOKIE_PATH "/" --type=constant --allow-root
 wp config set PLUGINS_COOKIE_PATH "/" --type=constant --allow-root
 
-# Force WordPress to see the original HTTPS host consistently behind Render's proxy.
+# WordPress base image does not guarantee that the MU-plugin directory exists.
+# Create it before writing proxy/auth diagnostics.
+mkdir -p /var/www/html/wp-content/mu-plugins
+
 cat > /var/www/html/wp-content/mu-plugins/render-proxy.php <<'PHP'
 <?php
 if (!defined('RENDER_PROXY_BOOTSTRAP')) {
@@ -100,7 +101,6 @@ else
   fi
 fi
 
-# Revoke old sessions once after the cookie configuration change.
 if ! wp option get oi_auth_migration_v3 --allow-root >/dev/null 2>&1; then
   echo "==> Invalidating administrator sessions for authentication migration v3..."
   wp user session destroy admin --all --allow-root >/dev/null 2>&1 || true
