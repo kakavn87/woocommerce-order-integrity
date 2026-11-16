@@ -32,14 +32,18 @@ wp config set WP_HOME "$PUBLIC_URL" --type=constant --allow-root
 wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
-# Keep WordPress authentication salts stable across Render container replacements/rolling deploys.
-# Derive deterministic 64-character keys from the persistent database password and site URL.
+
+# Keep authentication salts stable across Render container replacements.
 SALT_SEED="$WORDPRESS_DB_PASSWORD|$PUBLIC_URL"
 for SALT_NAME in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT; do
   SALT_VALUE="$(printf "%s|%s" "$SALT_SEED" "$SALT_NAME" | sha256sum | cut -d" " -f1)"
   wp config set "$SALT_NAME" "$SALT_VALUE" --type=constant --allow-root
 done
 
+# Use a new deterministic cookie namespace so cookies from the broken pre-fix setup
+# cannot keep the browser in an authentication loop.
+COOKIE_HASH="$(printf "%s|cookie-v2" "$SALT_SEED" | sha256sum | cut -c1-32)"
+wp config set COOKIEHASH "$COOKIE_HASH" --type=constant --allow-root
 wp config set COOKIE_DOMAIN "" --type=constant --allow-root
 wp config set COOKIEPATH "/" --type=constant --allow-root
 wp config set SITECOOKIEPATH "/" --type=constant --allow-root
@@ -52,7 +56,8 @@ cat > /var/www/html/wp-content/mu-plugins/render-auth-debug.php <<'PHP'
 <?php
 add_action('init', function () {
     $user = wp_get_current_user();
-    error_log('AUTHDBG init user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
+    $validated = wp_validate_auth_cookie();
+    error_log('AUTHDBG init user_id=' . (int) $user->ID . ' validated_id=' . (int) $validated . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' scheme=' . (is_ssl() ? 'ssl' : 'plain') . ' cookiehash=' . (defined('COOKIEHASH') ? COOKIEHASH : '(unset)') . ' cookie_names=' . implode(',', array_keys($_COOKIE)));
 }, 1);
 
 add_action('admin_init', function () {
@@ -70,11 +75,6 @@ add_action('set_auth_cookie', function ($auth_cookie, $expire, $expiration, $use
 
 add_action('clear_auth_cookie', function () {
     error_log('AUTHDBG clear_auth_cookie');
-});
-
-add_action('auth_redirect', function () {
-    $user = wp_get_current_user();
-    error_log('AUTHDBG auth_redirect user_id=' . (int) $user->ID . ' logged_in=' . (is_user_logged_in() ? '1' : '0') . ' request=' . ($_SERVER['REQUEST_URI'] ?? '') . ' referer=' . ($_SERVER['HTTP_REFERER'] ?? ''));
 });
 
 add_action('wp_redirect', function ($location, $status) {
@@ -100,6 +100,13 @@ else
     wp option update home "$PUBLIC_URL" --allow-root
     wp option update siteurl "$PUBLIC_URL" --allow-root
   fi
+fi
+
+# One-time auth migration: invalidate sessions created with the old cookie/salt setup.
+if ! wp option get oi_auth_migration_v2 --allow-root >/dev/null 2>&1; then
+  echo "==> Invalidating old administrator sessions for authentication migration..."
+  wp user session destroy admin --all --allow-root >/dev/null 2>&1 || true
+  wp option add oi_auth_migration_v2 1 --allow-root >/dev/null 2>&1 || wp option update oi_auth_migration_v2 1 --allow-root >/dev/null
 fi
 
 echo "==> Verifying WordPress installation..."
