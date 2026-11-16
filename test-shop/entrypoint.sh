@@ -32,6 +32,14 @@ wp config set WP_HOME "$PUBLIC_URL" --type=constant --allow-root
 wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN false --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
+# Keep WordPress authentication salts stable across Render container replacements/rolling deploys.
+# Derive deterministic 64-character keys from the persistent database password and site URL.
+SALT_SEED="$WORDPRESS_DB_PASSWORD|$PUBLIC_URL"
+for SALT_NAME in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT; do
+  SALT_VALUE="$(printf "%s|%s" "$SALT_SEED" "$SALT_NAME" | sha256sum | cut -d" " -f1)"
+  wp config set "$SALT_NAME" "$SALT_VALUE" --type=constant --allow-root
+done
+
 wp config set COOKIE_DOMAIN "" --type=constant --allow-root
 wp config set COOKIEPATH "/" --type=constant --allow-root
 wp config set SITECOOKIEPATH "/" --type=constant --allow-root
