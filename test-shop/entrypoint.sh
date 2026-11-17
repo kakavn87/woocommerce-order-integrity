@@ -53,7 +53,23 @@ if (!defined('RENDER_PROXY_BOOTSTRAP')) {
 }
 PHP
 
-echo "==> Checking WordPress database..."
+echo "==> Checking external WordPress database..."
+
+# The external MariaDB server may exist while the configured WordPress
+# database itself has been deleted. Re-create the empty database so WP-CLI
+# can connect and the normal WordPress installer can run.
+DB_HOST="$WORDPRESS_DB_HOST"
+DB_PORT=""
+if [[ "$DB_HOST" == *:* ]]; then
+  DB_PORT="${DB_HOST##*:}"
+  DB_HOST="${DB_HOST%%:*}"
+fi
+DB_ARGS=(--ssl -h "$DB_HOST" -u "$WORDPRESS_DB_USER" -p"$WORDPRESS_DB_PASSWORD")
+if [ -n "$DB_PORT" ]; then
+  DB_ARGS+=(--port="$DB_PORT")
+fi
+mariadb "${DB_ARGS[@]}" -e "CREATE DATABASE IF NOT EXISTS \`$WORDPRESS_DB_NAME\`;"
+
 wp db check --allow-root
 
 # RESET_WORDPRESS=1 is an explicit one-time reset command. It always wipes
