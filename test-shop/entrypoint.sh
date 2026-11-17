@@ -23,8 +23,6 @@ fi
 
 PUBLIC_URL="${RENDER_EXTERNAL_URL:-https://oi-test-shop-clean.onrender.com}"
 
-# Render terminates TLS before Apache. Keep WordPress aware that the public
-# request is HTTPS.
 if ! grep -q "Render test shop: public endpoint is HTTPS-only" wp-config.php; then
   cat >> wp-config.php <<'PHP'
 
@@ -39,8 +37,6 @@ wp config set WP_SITEURL "$PUBLIC_URL" --type=constant --allow-root
 wp config set FORCE_SSL_ADMIN true --raw --type=constant --allow-root
 wp config set MYSQL_CLIENT_FLAGS MYSQLI_CLIENT_SSL --raw --type=constant --allow-root
 
-# Keep auth keys identical across Render instances. No other custom auth
-# handling is used; WordPress handles login/session cookies normally.
 SALT_SEED="oi-clean-wordpress|$PUBLIC_URL"
 for SALT_NAME in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT; do
   SALT_VALUE="$(printf "%s|%s" "$SALT_SEED" "$SALT_NAME" | sha256sum | cut -d" " -f1)"
@@ -60,20 +56,13 @@ PHP
 echo "==> Checking WordPress database..."
 wp db check --allow-root
 
-# One-time clean reinstall: wipe the existing WordPress tables, but do NOT
-# run the WordPress installer. The user will complete the normal browser
-# installation himself. A marker table prevents another reset on restart.
-MARKER_TABLE="$(wp config get table_prefix --allow-root)oi_clean_reinstall_marker"
+# RESET_WORDPRESS=1 is an explicit one-time reset command. It always wipes
+# the WordPress database so the browser installer is guaranteed to appear.
+# The deploy must set RESET_WORDPRESS back to 0 after this reset.
 if [ "${RESET_WORDPRESS:-0}" = "1" ]; then
-  if ! wp db query "SELECT 1 FROM \`$MARKER_TABLE\` LIMIT 1" --allow-root >/dev/null 2>&1; then
-    echo "==> RESET_WORDPRESS=1: performing one-time clean WordPress reinstall..."
-    wp db reset --yes --allow-root
-    wp db query "CREATE TABLE \`$MARKER_TABLE\` (id int NOT NULL PRIMARY KEY) ENGINE=InnoDB" --allow-root
-    wp db query "INSERT INTO \`$MARKER_TABLE\` (id) VALUES (1)" --allow-root
-    echo "==> Database is clean. WordPress installer will be shown in the browser."
-  else
-    echo "==> Clean reinstall already performed; leaving database untouched."
-  fi
+  echo "==> RESET_WORDPRESS=1: performing clean WordPress database reset..."
+  wp db reset --yes --allow-root
+  echo "==> Database is clean. WordPress installer will be shown in the browser."
 fi
 
 if wp core is-installed --allow-root >/dev/null 2>&1; then
