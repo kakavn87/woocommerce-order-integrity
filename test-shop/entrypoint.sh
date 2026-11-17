@@ -64,7 +64,7 @@ if [[ "$DB_HOST" == *:* ]]; then
   DB_PORT="${DB_HOST##*:}"
   DB_HOST="${DB_HOST%%:*}"
 fi
-DB_ARGS=(--ssl -h "$DB_HOST" -u "$WORDPRESS_DB_USER" -p"$WORDPRESS_DB_PASSWORD")
+DB_ARGS=(--ssl -h "$DB_HOST" -u "$WORDPRESS_DB_USER" -p"$WORDPRESS_DB_PASSWORD" --database=mysql)
 if [ -n "$DB_PORT" ]; then
   DB_ARGS+=(--port="$DB_PORT")
 fi
